@@ -1,6 +1,10 @@
 import numpy as np
 import re
 import math
+import os
+import glob
+import shutil
+from sklearn.model_selection import train_test_split
 
 def linear_accel(start, dt, rate):
     return start + (rate * dt)
@@ -97,3 +101,33 @@ def calculate_pooling_dim(input_dim, kernel_dim, stride, order):
     order (int): Number of pooling operations being performed
     """
     return int(((input_dim - kernel_dim) / stride) + (1 * order))
+
+def dataset_split(PATH, train_ratio=0.8):
+    """ Function to split a given directory of data into a training and test split after seperating data for validation
+
+    Args:
+        PATH (str): Path to the data directory 
+        train_ratio (float, optional): Ratio of training to testing data. Defaults to 0.8.
+    """
+    filenames = glob.glob(f"{PATH}/*.npy")
+    
+    if os.path.exists(f"{PATH}/train/") and os.path.exists(f"{PATH}/test/"):
+        if (input(f"Train & Test directories exist on dataset path {PATH}. Overwrite? This WILL overwrite both directories (y,N)") != "y"):
+            print("Not overwriting current directories")
+            return
+            
+    os.makedirs(f"{PATH}/train/", exist_ok=False)
+    os.makedirs(f"{PATH}/test/", exist_ok=False)
+        
+    # Create the train/test/split
+    train, test = train_test_split(filenames, train_size=train_ratio, test_size=1-train_ratio) 
+
+    # Copy files into folders
+    for f in train:
+        f_s = f.split("/")[-1]
+        shutil.copy(f, f"{PATH}/train/{f_s}")
+    for f in test:
+        f_s = f.split("/")[-1]
+        shutil.copy(f, f"{PATH}/test/{f_s}")
+
+    print("Split files into train test folders")

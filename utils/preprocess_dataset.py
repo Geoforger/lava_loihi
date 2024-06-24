@@ -1,9 +1,10 @@
 import numpy as np
 import glob
+import os
 import pandas as pd
 import lava.lib.dl.slayer as slayer
 import concurrent.futures
-from utils import nums_from_string, log_data
+from utils import nums_from_string
 from data_processor import DataProcessor
 
 
@@ -27,48 +28,42 @@ def PreprocessSample(**kwargs):
     # input_path = kwargs["DATASET_PATH"]
     filename = kwargs["sample"]
 
-    try:
-        data = DataProcessor.load_data_np(path=filename)
-        
-        # Check args presented and apply preprocessing
-        if "pixel_reduction" in kwargs:
-            pixel_vals = kwargs["pixel_reduction"]
-            data.pixel_reduction(pixel_vals[0], pixel_vals[1], pixel_vals[2], pixel_vals[3])
-        if "offset" in kwargs:
-            data.offset_values(kwargs["offset"], reduce=True)
-        if "cuttoff" in kwargs:
-            data.remove_cuttoff(kwargs["cuttoff"])
-        if "rmv_duplicates" in kwargs:
-            data.remove_duplicates()
-        if "pooling" in kwargs:
-            kernel = kwargs["kernel"]
-            stride = kwargs["stride"]
-            threshold = kwargs["threshold"]
-            data.threshold_pooling(kernel, stride, threshold)
-        if "lava" in kwargs:
-            data.create_events()
-
-        if "save" in kwargs and "OUTPUT_PATH" in kwargs:
-            out_path = kwargs["OUTPUT_PATH"]
-            filename = f"{filename.split('/')[-1]}"
-
-            if "lava" in kwargs:
-                slayer.io.encode_np_spikes(f"{out_path}/{filename}", data.data)
-            else:
-                data.save_data_np(f"{out_path}/{filename}")
-
-        elif "save" in kwargs and "OUTPUT_PATH" not in kwargs:
-            raise Exception("No filename provided to save processed data to")
-
-        print("Processed data")
-        return data.data
+    data = DataProcessor.load_data(path=filename)
     
-    except Exception:
-        # Log sample name if fail to import
-        d = {"filename":[filename]}
-        log_data("log.csv", d)
-        return
+    # Check args presented and apply preprocessing
+    if "pixel_reduction" in kwargs:
+        pixel_vals = kwargs["pixel_reduction"]
+        data.pixel_reduction(pixel_vals[0], pixel_vals[1], pixel_vals[2], pixel_vals[3])
+    if "offset" in kwargs:
+        data.offset_values(kwargs["offset"], reduce=True)
+    if "cuttoff" in kwargs:
+        data.remove_cuttoff(kwargs["cuttoff"])
+    if "rmv_duplicates" in kwargs:
+        data.remove_duplicates()
+    if "pooling" in kwargs:
+        kernel = kwargs["kernel"]
+        stride = kwargs["stride"]
+        threshold = kwargs["threshold"]
+        data.threshold_pooling(kernel, stride, threshold)
+    output_shape = data.data.shape
+    if "lava" in kwargs:
+        data.create_events()
 
+    if "save" in kwargs and "OUTPUT_PATH" in kwargs:
+        out_path = kwargs["OUTPUT_PATH"]
+        filename = f"{filename.split('/')[-1]}"
+
+        if "lava" in kwargs:
+            slayer.io.encode_np_spikes(f"{out_path}/{filename}", data.data)
+        else:
+            data.save_data_np(f"{out_path}/{filename}")
+
+    elif "save" in kwargs and "OUTPUT_PATH" not in kwargs:
+        raise Exception("No filename provided to save processed data to")
+
+    print("Processed data")
+    return data.data, output_shape
+    
 
 def PreprocessDataset(**kwargs):
     """
@@ -89,10 +84,19 @@ def PreprocessDataset(**kwargs):
     args = kwargs.copy()
     args["save"] = True
 
-    print(args["OUTPUT_PATH"])
+    # Create output folder
+    out_path = args["OUTPUT_PATH"]
+    if os.path.isdir(out_path):
+        d = input(f"Output path {out_path} exists. Overwrite? (Y/n)")
+        if d == "n":
+            raise Exception("Not overwriting output directory")
+        else:
+            print("Overwriting Directory")
+    else:  
+        os.mkdir(args["OUTPUT_PATH"])        
 
     path = args.get("DATASET_PATH", None)
-    filenames = glob.glob(f"{path}/*.npy") 
+    filenames = glob.glob(f"{path}/*.pickle") 
 
     arg_dicts = [args.copy() for _ in range(len(filenames))]
     for idx, file in enumerate(filenames):
@@ -106,24 +110,26 @@ def PreprocessDataset(**kwargs):
 
         print("Getting results...")
         for f in concurrent.futures.as_completed(results):
-            f.result()
+            _, shape = f.result()
 
     # Save args to a meta file
-    df = pd.DataFrame.from_dict(d, orient="index")
-    df.to_csv(f"{args["OUTPUT_PATH"]}/meta.csv")
+    args["output_shape"] = shape
+    print(args)
+    # df = pd.DataFrame.from_dict(args, orient="columns")
+    df = pd.DataFrame([args])
+    df.to_csv(f"{out_path}/meta.csv")
 
     print("Finished processing dataset")
 
 
 def main(): 
-    dataset = "../data/datasets/"
-    output = "../data/datasets/"
-    
+    dataset = "../data/datasets/ntac_2.5_11texture_100trial_slide_test_06101340/"
+    output = "../data/datasets/preprocessed_dataset/"
 
     args = {
         "DATASET_PATH": dataset,
         "OUTPUT_PATH": output,
-        "pixel_reduction": (160, 170, 60, 110),
+        "pixel_reduction": (20, 2, 50, 30),
         "lava": True,    # NOTE: THIS SHOULD BE COMMENTED OUT AND NOT SET TO FALSE
         "save": True,
         "cuttoff": 2000,

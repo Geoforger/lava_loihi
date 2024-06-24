@@ -6,19 +6,23 @@ from torch.utils.data import DataLoader
 # from lava.lib.dl.netx import hdf5
 import h5py
 import matplotlib.pyplot as plt
-import numpy as np
-from datetime import datetime
 import os
 import time
-import glob
 import csv
 import pandas as pd
 from ast import literal_eval
 
 # Import the data processing class and data collection class
 from loihi_dataset import DavisDataset
-from sklearn.metrics import confusion_matrix, accuracy_score
-from sklearn.model_selection import train_test_split
+import sys
+sys.path.append("..")
+from utils.utils import dataset_split
+
+# Multi GPU
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.multiprocessing as mp
+from torch.utils.data.distributed import DistributedSampler
 
 # ## Define network structure as before
 class Network(torch.nn.Module):  # Define network
@@ -73,32 +77,73 @@ class Network(torch.nn.Module):  # Define network
         plt.close()
 
         return grad
+    
+    def export_hdf5(self, filename):
+        # network export to hdf5 format
+        h = h5py.File(filename, 'w')
+        layer = h.create_group('layer')
+        for i, b in enumerate(self.blocks):
+            b.export_hdf5(layer.create_group(f'{i}'))
 
 
-def main():
+
+def setup(rank, world_size):  
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+
+def prepare(dataset, rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+    
+    dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=False, shuffle=False, sampler=sampler)
+    
+    return dataloader
+
+
+def cleanup():
+    dist.destroy_process_group()
+    print("Destroyed process groups...")
+
+
+def objective(rank, world_size, DATASET_PATH):
+    setup(rank, world_size)
+    
     #############################
     # Output params
     #############################
-    OUTPUT_PATH = "/home/farscope2/Documents/PhD/lava_loihi/networks/"
-    DATASET_PATH = "/home/farscope2/Documents/PhD/lava_loihi/data/datasets/"
+    OUTPUT_PATH = "../networks/test_network/"
+    
+    # Read meta for x, y sizes of preproc data
+    meta = pd.read_csv(f"{DATASET_PATH}/meta.csv")
+    meta['output_shape'] = meta['output_shape'].apply(literal_eval)
+    x_size, y_size = meta["output_shape"].iloc[0]
 
     #############################
     # Training params
     #############################
-    num_epochs = 5
+    num_epochs = 100
     learning_rate = 0.0001   # Starting learning rate
-    batch_size = 25
+    batch_size = 700
     hidden_layer = 125
     factor = 3.33   # Factor by which to divide the learning rate
-    lr_epoch = 4    # Lower the learning rate by factor every lr_epoch epochs
-    sample_length = 1000
+    lr_epoch = 200    # Lower the learning rate by factor every lr_epoch epochs
+    sample_length = 2000
     # truer_rate = 0.5
 
     testing_labels = []
     testing_preds = []
 
     # Initialise network and slayer assistant
-    net = Network(hidden_size=hidden_layer)
+    net = Network(
+        output_neurons=11,
+        x_size=x_size,
+        y_size=y_size,
+        dropout=0.2
+    ).to(rank)
+
+    # Create network and distributed object
+    net = DDP(net, device_ids=[rank], output_device=rank, find_unused_parameters=False)
 
     # TODO: 1) Play around with different optimisers
     optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
@@ -106,15 +151,12 @@ def main():
     # Initialise error module
     # TODO: 1) Play around with different error rates, etc.
     error = slayer.loss.SpikeRate(
-        true_rate=0.5, false_rate=0.02, reduction='sum')
+        true_rate=0.5, false_rate=0.02, reduction='sum').to(rank)
 
     # Initialise stats and training assistants
     stats = slayer.utils.LearningStats()
     assistant = slayer.utils.Assistant(
         net, error, optimizer, stats, classifier=slayer.classifier.Rate.predict)
-
-    # Get all file names into kernal
-    files = glob.glob(f"{DATASET_PATH}/*.pickle")
 
     # Load in datasets
     training_set = DavisDataset(
@@ -122,31 +164,31 @@ def main():
         train=True,
         x_size=x_size,
         y_size=y_size,
-        sample_length=sampling_length,
+        sample_length=sample_length,
     )
     testing_set = DavisDataset(
-        dataset_path,
+        DATASET_PATH,
         train=False,
         x_size=x_size,
         y_size=y_size,
-        sample_length=sampling_length,
+        sample_length=sample_length,
     )
 
-    train_loader = DataLoader(
-        dataset=training_set, batch_size=batch_size, shuffle=True, num_workers=0
-    )
-    test_loader = DataLoader(
-        dataset=testing_set, batch_size=batch_size, shuffle=True, num_workers=0
-    )
+    train_loader = prepare(training_set, rank, world_size, batch_size=batch_size, num_workers=0)
+    test_loader = prepare(testing_set, rank, world_size, batch_size=batch_size, num_workers=0)
 
     ##################################
     # Training loop
     ##################################
     # Loop through each training epoch
-    print("Starting training loop")
+    if rank == 0:
+        print("Starting training loop")
     for epoch in range(num_epochs):
         tic = time.time()
-        print(f"\nEpoch {epoch}")
+        if rank == 0:
+            print(f"\nEpoch {epoch}")
+        train_loader.sampler.set_epoch(epoch)
+        test_loader.sampler.set_epoch(epoch)
 
         # Reduce learning rate by factor every lr_epoch epochs
         # Check to prevent lowering lr on first epoch
@@ -157,12 +199,16 @@ def main():
                 print(f"Learning rate reduced to {learning_rate}")
 
         # Training loop
-        for i, (input_, label) in enumerate(train_loader):
-            output = assistant.train(input_, label)
+        if rank == 0:
+            print("Training...")
+        for _, (input, label) in enumerate(train_loader):
+            output = assistant.train(input, label)
 
         # Testing loop
-        for i, (input_, label) in enumerate(test_loader):  # testing loop
-            output = assistant.test(input_, label)
+        if rank == 0:
+            print("Testing...")
+        for _, (input, label) in enumerate(test_loader):  # testing loop
+            output = assistant.test(input, label)
             if epoch == num_epochs - 1:
                 for l in range(len(slayer.classifier.Rate.predict(output))):
                     testing_labels.append(label[l].cpu())
@@ -171,24 +217,46 @@ def main():
                     )
 
         if stats.testing.best_accuracy:
-            torch.save(net.state_dict(), f"{OUTPUT_PATH}/network.pt")
-            net.export_hdf5(f"{OUTPUT_PATH}/network.net")
+            if rank == 0:
+                torch.save(net.module.state_dict(), f"{OUTPUT_PATH}/network.pt")
+                # net.module.export_hdf5(f"{OUTPUT_PATH}/network.net")
 
-    stats.update()
-    stats.save(OUTPUT_PATH + "/")
-    net.grad_flow(OUTPUT_PATH + "/")
-    print(stats)
+        stats.update()
+        stats.save(OUTPUT_PATH + "/")
+        # net.grad_flow(OUTPUT_PATH + "/")
 
-    toc = time.time()
-    epoch_timing = (toc - tic) / 60
-    print(f"\r[Epoch {epoch:2d}/{num_epochs}] {stats}", end="")
-    print(f"\r[Epoch {epoch:2d}/{num_epochs}] {stats}", end="")
-    print(f"\nTime taken for this epoch = {epoch_timing} mins")
-    # stats.plot(figsize=(15, 5))
+        toc = time.time()
+        epoch_timing = (toc - tic) / 60
+        if rank == 0:
+            print(stats)
+            print(f"\r[Epoch {epoch:2d}/{num_epochs}] {stats}", end="")
+            print(f"\r[Epoch {epoch:2d}/{num_epochs}] {stats}", end="")
+            print(f"\nTime taken for this epoch = {epoch_timing} mins")
+        # stats.plot(figsize=(15, 5))
 
+    # TODO: This should be changed to look at the output stats file instead of the stats object
+    # Save the best network to a hdf5 file
+    if rank == 0:
+        net.module.load_state_dict(torch.load(f"{OUTPUT_PATH}/network.pt"))
+        net.module.export_hdf5(f"{OUTPUT_PATH}/network.net")
     print("Finished training")
     # stats.plot(figsize=(15, 5))
+    
+    cleanup()
 
+
+def main():
+    DATASET_PATH = "../data/datasets/preprocessed_dataset/"
+    
+    # Train test split
+    dataset_split(DATASET_PATH, train_ratio=0.8)
+    
+    world_size = 3
+    mp.spawn(
+        objective,
+        args=[world_size, DATASET_PATH],
+        nprocs=world_size
+    )
 
 if __name__ == "__main__":
     main()

@@ -44,7 +44,7 @@ class DavisDataset(Dataset):
         filename = self.samples[index]
 
         # Get the folder name that contains the file for label
-        label = nums_from_string(filename)[-2]
+        label = nums_from_string(filename)[-1]
 
         event = slayer.io.read_np_spikes(filename)
         spike = event.fill_tensor(
