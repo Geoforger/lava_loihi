@@ -24,7 +24,7 @@ class CustomInivationEncoder(AbstractProcess):
             cam_dims = in_shape
 
         if not self.off_events:
-            self.out_shape = (1,) + cam_dims
+            self.out_shape = cam_dims
         else:
             self.out_shape = (2,) + cam_dims
 
@@ -60,7 +60,7 @@ class PyCustomInivationEncoderModel(PyLoihiProcessModel):
 
         if not self.off_events:
             output_arr = np.zeros(self.out_shape)
-            output_arr[0, on_events] = 1
+            output_arr[on_events] = 1
 
         # TODO: Implement option for off events
         # NOTE: This is currently untested and may not be correct implementation

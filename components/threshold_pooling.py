@@ -16,13 +16,15 @@ class ThresholdPooling(AbstractProcess):
         in_shape: tuple,
         kernel: tuple,
         stride: int,
-        thresold: int,
+        threshold: int,
+        off_events: bool=False
     ) -> None:
 
         self.in_shape = in_shape
         self.kernel = kernel
         self.stride = stride
-        self.threshold = thresold
+        self.threshold = threshold
+        self.off_events = off_events
 
         self.pooling_indices = self.__create_pooling_indices()
         self.num_windows = len(self.pooling_indices)
@@ -41,7 +43,8 @@ class ThresholdPooling(AbstractProcess):
             threshold=self.threshold,
             pooling_indices=self.pooling_indices,
             num_windows=self.num_windows,
-            num_x=self.num_x
+            num_x=self.num_x,
+            off_events=self.off_events
         )
 
     def __create_pooling_indices(self):
@@ -85,6 +88,7 @@ class PyThresholdPoolingModel(PyLoihiProcessModel):
         self.pooling_indices = proc_params["pooling_indices"]
         self.num_windows = proc_params["num_windows"]
         self.num_x = proc_params["num_x"]
+        self.off_events = proc_params["off_events"]
 
     def run_spk(self):
         # Get spike information
@@ -99,14 +103,10 @@ class PyThresholdPoolingModel(PyLoihiProcessModel):
 
             # Initialize counters for spike types
             count_ones = np.zeros(len(self.pooling_indices), dtype=int)
-            count_zeros = np.zeros(len(self.pooling_indices), dtype=int)
 
             # Update counts based on spike data
             count_ones += np.bincount(
                 window_idx[data == 1], minlength=len(self.pooling_indices)
-            )
-            count_zeros += np.bincount(
-                window_idx[data == 0], minlength=len(self.pooling_indices)
             )
 
             # Initialize output mapping with 2s (default state)
@@ -114,11 +114,19 @@ class PyThresholdPoolingModel(PyLoihiProcessModel):
 
             # Update output mapping where thresholds are surpassed
             output_mapping[count_ones >= self.threshold] = 1
-            output_mapping[count_zeros >= self.threshold] = 0
 
-            # Find valid indices from output mapping
-            valid_indices = np.where(
-                (output_mapping == 1) | (output_mapping == 0))[0]
+            valid_indices = np.where((output_mapping == 1))
+
+            if self.off_events:
+                count_zeros = np.zeros(len(self.pooling_indices), dtype=int)
+                count_zeros += np.bincount(
+                    window_idx[data == 0], minlength=len(self.pooling_indices)
+                )
+                output_mapping[count_zeros >= self.threshold] = 0
+
+                # Find valid indices from output mapping
+                valid_indices = np.where(
+                    (output_mapping == 1) | (output_mapping == 0))[0]
 
             # Send out the data and indices
             self.s_out.send(output_mapping[valid_indices], valid_indices)
