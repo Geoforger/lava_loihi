@@ -191,7 +191,7 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
 
     def run_spk(self) -> None:
         # On first iteration clear the cameras buffer to ensure time sync
-        if self.time_step == 1:
+        if self.time_step == 2:
             self.reader.sync_time()
 
         # Take event batch from buffer
