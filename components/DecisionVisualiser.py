@@ -19,8 +19,12 @@ class DecisionVisualiser(AbstractProcess):
 
     Parameters:
     -----------
-        window_name (string, optional):
-            Name of the CV window. Defaults 'Decision Visualiser'
+        net_out_shape (tuple):
+            Output shape of network
+        window (VisualiserWindow class):
+            Main thread tkinter window to display to
+        frequency (int, optional):
+            Frequency of window update. Default=10
     Returns:
         None
     """
@@ -28,12 +32,14 @@ class DecisionVisualiser(AbstractProcess):
     def __init__(
         self, 
         net_out_shape,
-        window
+        window,
+        frequency=10
     ) -> None:
 
         self.in_shape = (1,)
         self.net_out_shape = net_out_shape
         self.window = window
+        self.frequency = frequency
         self.bar_container = None
         self.background = None
 
@@ -50,6 +56,7 @@ class DecisionVisualiser(AbstractProcess):
             in_shape=self.in_shape,
             net_out_shape=self.net_out_shape,
             window=self.window,
+            frequency=self.frequency,
             acc=self.acc,
             conf=self.conf,
             decision=self.decision,
@@ -65,13 +72,11 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
     acc_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int64)
     conf_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, float)
 
-    # acc: np.ndarray = LavaPyType(np.ndarray, np.int64)
-    # conf: np.ndarray = LavaPyType(np.ndarray, float)
-
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)
         self.in_shape = proc_params["in_shape"]
         self.net_out_shape = proc_params["net_out_shape"]
+        self.frequency = proc_params["frequency"]
         self.acc = proc_params["acc"]
         self.conf = proc_params["conf"]
         self.decision = proc_params["decision"]
@@ -103,20 +108,6 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
         self.classification_label.config(text=f"Classification: N/A")
         self.confidence_label.config(text=f"Confidence: {0.0}")
 
-    # def update_plot(self):
-    #     bar_x = np.arange(len(self.acc))
-    #     bar_height = self.acc
-
-    #     self.ax.clear()
-    #     self.ax.bar(bar_x, bar_height)
-    #     self.ax.set_xlabel("Neuron Idx")
-    #     self.ax.set_ylabel("Spike Count")
-    #     self.ax.set_title("Decision Plotter")
-    #     self.canvas.draw()
-
-    #     self.classification_label.config(text=f"Classification: {self.decision}")
-    #     self.confidence_label.config(text=f"Confidence: {self.conf[0]:.2f}")
-
     def update_plot(self):
         bar_height = self.acc
 
@@ -124,7 +115,7 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
         for bar, height in zip(self.bar_container, bar_height):
             bar.set_height(height)
 
-        self.canvas.restore_region(self.background)  # Restore the background
+        self.canvas.restore_region(self.background)
 
         # Redraw only the bars and the y-axis
         for bar in self.bar_container:
@@ -153,9 +144,7 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
 
         # NOTE: Due to run_post_mgmt, we are 1ts out of sync with network
         if (self.acc is not None) & (self.conf != None):
-            # print(f"Vis Accumulator: {self.acc} : {self.time_step}")
-            # print(f"Vis Conf: {self.conf} : {self.time_step}")
-            if self.time_step % 10 == 0:
+            if self.time_step % self.frequency == 0:
                 self.window.root.after(0, self.update_plot)
                 self.window.root.update()
 
@@ -166,7 +155,6 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
 class VisualiserWindow:
     def __init__(self, root):
         self.root = root
-        # self.root.title("Dynamic Bar Plot with Tkinter")
 
         self.fig = Figure(figsize=(6, 4))
         self.ax = self.fig.add_subplot(111)
