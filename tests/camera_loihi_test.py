@@ -62,7 +62,7 @@ def main():
     decision = DecisionMaker(
         in_shape=out_adapter.out.shape,
         offset=10,
-        threshold=0.2
+        threshold=0.15
     )
 
     root = tk.Tk()

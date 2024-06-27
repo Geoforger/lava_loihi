@@ -1,11 +1,9 @@
-import sys
 import numpy as np
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from lava.magma.core.decorator import implements, requires
-from lava.magma.core.process.variable import Var
 from lava.magma.core.model.py.model import PyLoihiProcessModel
 from lava.magma.core.model.py.ports import PyInPort, PyRefPort
 from lava.magma.core.model.py.type import LavaPyType
@@ -36,6 +34,8 @@ class DecisionVisualiser(AbstractProcess):
         self.in_shape = (1,)
         self.net_out_shape = net_out_shape
         self.window = window
+        self.bar_container = None
+        self.background = None
 
         self.a_in = InPort(shape=self.in_shape)
         self.conf_in = RefPort((1,))
@@ -50,9 +50,11 @@ class DecisionVisualiser(AbstractProcess):
             in_shape=self.in_shape,
             net_out_shape=self.net_out_shape,
             window=self.window,
-            acc = self.acc,
-            conf = self.conf,
-            decision = self.decision,
+            acc=self.acc,
+            conf=self.conf,
+            decision=self.decision,
+            bar_container=self.bar_container,
+            background=self.background
         )
 
 
@@ -74,6 +76,8 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
         self.conf = proc_params["conf"]
         self.decision = proc_params["decision"]
         self.window = proc_params["window"]
+        self.bar_container = proc_params["bar_container"]
+        self.background = proc_params["background"]
 
         # Reference to the tkinter window elements
         self.fig = self.window.fig
@@ -82,32 +86,54 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
         self.classification_label = self.window.classification_label
         self.confidence_label = self.window.confidence_label
 
-        # self.window.root.after(0, self.init_plot)  # Schedule the first update
-        # self.window.root.mainloop()
-
     def init_plot(self):
         bar_x = np.arange(self.net_out_shape[0])
         bar_height = 0
 
         self.ax.clear()
-        self.ax.bar(bar_x, bar_height)
+        self.bar_container = self.ax.bar(bar_x, bar_height)
         self.ax.set_xlabel("Neuron Idx")
+        self.ax.set_ylabel("Spike Count")
         self.ax.set_title("Decision Plotter")
+        self.ax.set_ylim(0, 500)
+        self.ax.set_yticks(np.arange(0,1050,50))
         self.canvas.draw()
+        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
 
         self.classification_label.config(text=f"Classification: N/A")
         self.confidence_label.config(text=f"Confidence: {0.0}")
 
+    # def update_plot(self):
+    #     bar_x = np.arange(len(self.acc))
+    #     bar_height = self.acc
+
+    #     self.ax.clear()
+    #     self.ax.bar(bar_x, bar_height)
+    #     self.ax.set_xlabel("Neuron Idx")
+    #     self.ax.set_ylabel("Spike Count")
+    #     self.ax.set_title("Decision Plotter")
+    #     self.canvas.draw()
+
+    #     self.classification_label.config(text=f"Classification: {self.decision}")
+    #     self.confidence_label.config(text=f"Confidence: {self.conf[0]:.2f}")
+
     def update_plot(self):
-        bar_x = np.arange(len(self.acc))
         bar_height = self.acc
 
-        self.ax.clear()
-        self.ax.bar(bar_x, bar_height)
-        self.ax.set_xlabel("Neuron Idx")
-        self.ax.set_ylabel("Output Spikes")
-        self.ax.set_title("Decision Plotter")
-        self.canvas.draw()
+        # Update bar heights
+        for bar, height in zip(self.bar_container, bar_height):
+            bar.set_height(height)
+
+        self.canvas.restore_region(self.background)  # Restore the background
+
+        # Redraw only the bars and the y-axis
+        for bar in self.bar_container:
+            self.ax.draw_artist(bar)
+
+        self.canvas.blit(self.ax.bbox)
+        self.canvas.flush_events()  # Ensure the canvas updates
+
+        self.background = self.canvas.copy_from_bbox(self.ax.bbox)  # Update the background
 
         self.classification_label.config(text=f"Classification: {self.decision}")
         self.confidence_label.config(text=f"Confidence: {self.conf[0]:.2f}")
@@ -140,7 +166,7 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
 class VisualiserWindow:
     def __init__(self, root):
         self.root = root
-        self.root.title("Dynamic Bar Plot with Tkinter")
+        # self.root.title("Dynamic Bar Plot with Tkinter")
 
         self.fig = Figure(figsize=(6, 4))
         self.ax = self.fig.add_subplot(111)
