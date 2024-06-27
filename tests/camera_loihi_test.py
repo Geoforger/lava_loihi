@@ -12,12 +12,14 @@ from lava_loihi.components.iniviation_visualiser import InivationVisualiser as V
 from lava_loihi.components.threshold_pooling import ThresholdPooling as Pooling
 from lava_loihi.components.decisions import DecisionMaker
 from lava_loihi.components.DecisionVisualiser import DecisionVisualiser as DecisionVis
+from lava_loihi.components.DecisionVisualiser import VisualiserWindow
 from lava.magma.core.run_conditions import RunSteps, RunContinuous
 from lava.magma.core.run_configs import Loihi2HwCfg
 from lava.proc.io.sink import RingBuffer
 from lava.magma.compiler.subcompilers.nc.ncproc_compiler import CompilerOptions
 import logging
 import time
+import tkinter as tk
 CompilerOptions.verbose = True
 
 
@@ -62,7 +64,11 @@ def main():
         offset=10,
         threshold=0.2
     )
-    decision_vis = DecisionVis(net_out_shape=net.out.shape)
+
+    root = tk.Tk()
+    window = VisualiserWindow(root)
+    decision_vis = DecisionVis(net_out_shape=net.out.shape, window=window)
+
     sink = RingBuffer(shape=decision.s_out.shape, buffer=run_steps)
 
     # Connect all components

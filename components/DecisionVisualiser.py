@@ -1,11 +1,15 @@
+import sys
 import numpy as np
+import tkinter as tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
 
 from lava.magma.core.decorator import implements, requires
 from lava.magma.core.process.variable import Var
 from lava.magma.core.model.py.model import PyLoihiProcessModel
-from lava.magma.core.model.py.ports import PyInPort, PyVarPort, PyRefPort
+from lava.magma.core.model.py.ports import PyInPort, PyRefPort
 from lava.magma.core.model.py.type import LavaPyType
-from lava.magma.core.process.ports.ports import InPort, VarPort, RefPort
+from lava.magma.core.process.ports.ports import InPort, RefPort
 from lava.magma.core.process.process import AbstractProcess
 from lava.magma.core.resources import CPU
 from lava.magma.core.sync.protocols.loihi_protocol import LoihiProtocol
@@ -26,12 +30,12 @@ class DecisionVisualiser(AbstractProcess):
     def __init__(
         self, 
         net_out_shape,
-        window_name="Decision Visualiser"
+        window
     ) -> None:
 
         self.in_shape = (1,)
         self.net_out_shape = net_out_shape
-        self.window_name = window_name
+        self.window = window
 
         self.a_in = InPort(shape=self.in_shape)
         self.conf_in = RefPort((1,))
@@ -45,10 +49,10 @@ class DecisionVisualiser(AbstractProcess):
         super().__init__(
             in_shape=self.in_shape,
             net_out_shape=self.net_out_shape,
-            window_name=self.window_name,
+            window=self.window,
             acc = self.acc,
             conf = self.conf,
-            decision = self.decision
+            decision = self.decision,
         )
 
 
@@ -66,13 +70,47 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
         super().__init__(proc_params)
         self.in_shape = proc_params["in_shape"]
         self.net_out_shape = proc_params["net_out_shape"]
-        self.window_name = proc_params["window_name"]
         self.acc = proc_params["acc"]
         self.conf = proc_params["conf"]
         self.decision = proc_params["decision"]
+        self.window = proc_params["window"]
+
+        # Reference to the tkinter window elements
+        self.fig = self.window.fig
+        self.ax = self.window.ax
+        self.canvas = self.window.canvas
+        self.classification_label = self.window.classification_label
+        self.confidence_label = self.window.confidence_label
+
+        # self.window.root.after(0, self.init_plot)  # Schedule the first update
+        # self.window.root.mainloop()
+
+    def init_plot(self):
+        bar_x = np.arange(self.net_out_shape[0])
+        bar_height = 0
+
+        self.ax.clear()
+        self.ax.bar(bar_x, bar_height)
+        self.ax.set_xlabel("Neuron Idx")
+        self.ax.set_title("Decision Plotter")
+        self.canvas.draw()
+
+        self.classification_label.config(text=f"Classification: N/A")
+        self.confidence_label.config(text=f"Confidence: {0.0}")
 
     def update_plot(self):
-        pass
+        bar_x = np.arange(len(self.acc))
+        bar_height = self.acc
+
+        self.ax.clear()
+        self.ax.bar(bar_x, bar_height)
+        self.ax.set_xlabel("Neuron Idx")
+        self.ax.set_ylabel("Output Spikes")
+        self.ax.set_title("Decision Plotter")
+        self.canvas.draw()
+
+        self.classification_label.config(text=f"Classification: {self.decision}")
+        self.confidence_label.config(text=f"Confidence: {self.conf[0]:.2f}")
 
     def post_guard(self):
         return True
@@ -80,15 +118,36 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
     def run_post_mgmt(self):
         # Recieve values for accumulator and conf in post mgmt
         self.acc = self.acc_in.read()
-        # print(f"Vis Accumulator: {accumulator} : {self.time_step}")
         self.conf = self.conf_in.read()
 
     def run_spk(self) -> None:
+        if self.time_step == 1:
+            self.window.root.after(0, self.init_plot)
+            self.window.root.update()
+
         # NOTE: Due to run_post_mgmt, we are 1ts out of sync with network
         if (self.acc is not None) & (self.conf != None):
             # print(f"Vis Accumulator: {self.acc} : {self.time_step}")
             # print(f"Vis Conf: {self.conf} : {self.time_step}")
-            pass
+            if self.time_step % 10 == 0:
+                self.window.root.after(0, self.update_plot)
+                self.window.root.update()
 
         # Recieve decision for next timestep
         self.decision = self.a_in.recv()
+
+
+class VisualiserWindow:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Dynamic Bar Plot with Tkinter")
+
+        self.fig = Figure(figsize=(6, 4))
+        self.ax = self.fig.add_subplot(111)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+        self.classification_label = tk.Label(self.root, text="Classification: N/A")
+        self.classification_label.pack(side=tk.LEFT)
+        self.confidence_label = tk.Label(self.root, text="Confidence: 0.0")
+        self.confidence_label.pack(side=tk.RIGHT)
