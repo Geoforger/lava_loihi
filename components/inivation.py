@@ -193,6 +193,9 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.reader.start()
 
     def run_spk(self) -> None:
+        if self.time_step == 1:
+            logging.info("\nStart of Test\n")
+
         start = time.time_ns()
         # On first iteration clear the cameras buffer to ensure time sync
         if self.time_step == 2:
