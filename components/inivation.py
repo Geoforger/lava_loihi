@@ -15,7 +15,10 @@ from lava.magma.core.process.ports.ports import OutPort
 from lava.magma.core.process.process import AbstractProcess
 from lava.magma.core.resources import CPU
 from lava.magma.core.sync.protocols.loihi_protocol import LoihiProtocol
+import logging
 
+# Configure logging
+logging.basicConfig(filename="runtime.log", level=logging.INFO, format="%(message)s")
 
 # TODO: Implement reading from file
 class InivationCamera(AbstractProcess):
@@ -190,6 +193,7 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.reader.start()
 
     def run_spk(self) -> None:
+        start = time.time_ns()
         # On first iteration clear the cameras buffer to ensure time sync
         if self.time_step == 2:
             self.reader.sync_time()
@@ -203,6 +207,7 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
                 self.current_batch = self.noise_filter.generateEvents()
 
             data, indices = self._create_sparse_vector(self.current_batch)
+            logging.info(f"Num prefiltered spikes: {len(data)}")
 
             # Apply any preprocessing steps
             if self.crop_params is not None:
@@ -213,6 +218,9 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
 
         # Output spikes
         self.s_out.send(data, indices)
+        end = time.time_ns()
+        logging.info(f"Num postfiltered spikes: {len(data)}")
+        logging.info(f"{end-start}ns")
 
     def _create_sparse_vector(self, event_batch) -> ty.Tuple[np.ndarray, np.ndarray]:
         """ Create sparse vector from an event batch"""
