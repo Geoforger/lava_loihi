@@ -4,6 +4,7 @@ import matplotlib.patches as mpatches
 import seaborn as sb
 import numpy as np
 from scipy.optimize import curve_fit
+from sklearn.metrics import r2_score, mean_squared_error
 
 params = {
     "text.usetex": True,
@@ -167,6 +168,10 @@ def model_nlogn(x, a, b):
     return a * x * np.log(x) + b
 
 
+def model_expo(x, a, b):
+    return a * np.exp(b * x)
+
+
 def main():
     ###################################
     # NO LOAD
@@ -235,7 +240,7 @@ def main():
     plt.ylabel("Mean Time (ms)")
     plt.title("Camera Process Latency under no load")
     plt.tight_layout()
-    plt.savefig("./data/plots/cam_latency_no_load.eps", dpi=600)
+    # plt.savefig("./data/plots/cam_latency_no_load.eps", dpi=600)
     # plt.show()
     plt.close()
 
@@ -429,7 +434,7 @@ def main():
     plt.xlabel("Prefiltered Spikes")
     plt.ylabel("Mean Latency (ms)")
     plt.tight_layout()
-    plt.savefig("./data/plots/cam_latency_load_incoming_spikes.png", dpi=600, bbox_inches="tight")
+    # plt.savefig("./data/plots/cam_latency_load_incoming_spikes.png", dpi=600, bbox_inches="tight")
     # plt.show()
     plt.close()
 
@@ -440,39 +445,76 @@ def main():
     for d in conditions:
         time_complex_frame = pd.concat([time_complex_frame, d])
 
+    prefiltered_spikes = time_complex_frame["prefiltered_spikes"].apply(
+        lambda x: np.mean(x) if isinstance(x, list) else 0
+    ).to_numpy()
+    timings = time_complex_frame["Mean Time (ms)"].to_numpy()
+
     popt_linear, _ = curve_fit(
         model_linear,
-        time_complex_frame["prefiltered_spikes"],
-        time_complex_frame["Mean Time (ms)"],
+        prefiltered_spikes,
+        timings,
     )
     popt_quadratic, _ = curve_fit(
         model_quadratic,
-        time_complex_frame["prefiltered_spikes"],
-        time_complex_frame["Mean Time (ms)"],
+        prefiltered_spikes,
+        timings,
     )
     popt_logarithmic, _ = curve_fit(
         model_logarithmic,
-        time_complex_frame["prefiltered_spikes"],
-        time_complex_frame["Mean Time (ms)"],
+        prefiltered_spikes,
+        timings,
     )
     popt_nlogn, _ = curve_fit(
         model_nlogn,
-        time_complex_frame["prefiltered_spikes"],
-        time_complex_frame["Mean Time (ms)"],
+        prefiltered_spikes,
+        timings,
     )
 
-    predicted_linear = model_linear(
-        time_complex_frame["prefiltered_spikes"], *popt_linear
-    )
-    predicted_quadratic = model_quadratic(
-        time_complex_frame["prefiltered_spikes"], *popt_quadratic
-    )
-    predicted_logarithmic = model_logarithmic(
-        time_complex_frame["prefiltered_spikes"], *popt_logarithmic
-    )
-    predicted_nlogn = model_nlogn(
-        time_complex_frame["prefiltered_spikes"], *popt_nlogn
-    )
+    predicted_linear = model_linear(prefiltered_spikes, *popt_linear)
+    predicted_quadratic = model_quadratic(prefiltered_spikes, *popt_quadratic)
+    predicted_logarithmic = model_logarithmic(prefiltered_spikes, *popt_logarithmic)
+    predicted_nlogn = model_nlogn(prefiltered_spikes, *popt_nlogn)
+
+    for idx, cond in enumerate(conditions):
+        name = cond_names[idx]
+        for t in range(len(cond)):
+            test = cond.iloc[t]
+            sb.scatterplot(
+                    data=test, x="prefiltered_spikes", y="Timings (ms)", color=colors[idx]
+                )
+
+        patches.append(mpatches.Patch(color=colors[idx], label=name))
+
+    plt.plot(prefiltered_spikes, predicted_linear, label='Linear Fit', color='blue')
+    plt.plot(prefiltered_spikes, predicted_quadratic, label='Quadratic Fit', color='green')
+    plt.plot(prefiltered_spikes, predicted_logarithmic, label='Logarithmic Fit', color='red')
+    plt.plot(prefiltered_spikes, predicted_nlogn, label='n log(n) Fit', color='purple')
+    plt.title("Process latency against number of incoming spikes")
+    plt.xlabel("Prefiltered Spikes")
+    plt.ylabel("Mean Latency (ms)")
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+    # Calculate R-squared and RMSE for each model
+    r2_linear = r2_score(timings, predicted_linear)
+    rmse_linear = np.sqrt(mean_squared_error(timings, predicted_linear))
+
+    r2_quadratic = r2_score(timings, predicted_quadratic)
+    rmse_quadratic = np.sqrt(mean_squared_error(timings, predicted_quadratic))
+
+    r2_logarithmic = r2_score(timings, predicted_logarithmic)
+    rmse_logarithmic = np.sqrt(mean_squared_error(timings, predicted_logarithmic))
+
+    r2_nlogn = r2_score(timings, predicted_nlogn)
+    rmse_nlogn = np.sqrt(mean_squared_error(timings, predicted_nlogn))
+
+    # Print R-squared and RMSE values
+    print(f"Linear Model: R-squared = {r2_linear}, RMSE = {rmse_linear}")
+    print(f"Quadratic Model: R-squared = {r2_quadratic}, RMSE = {rmse_quadratic}")
+    print(f"Logarithmic Model: R-squared = {r2_logarithmic}, RMSE = {rmse_logarithmic}")
+    print(f"n log(n) Model: R-squared = {r2_nlogn}, RMSE = {rmse_nlogn}")
 
     ###################################
     # Bar plots of each test condition
@@ -492,7 +534,7 @@ def main():
         y="Mean Latency (ms)",
         palette="pastel",
         hatch="/",
-        edgecolor="black",
+        edgecolor="white",
         alpha=0.5,
         ci=None,
         zorder=2,
@@ -542,12 +584,9 @@ def main():
     )
     solid_patch = mpatches.Patch(color="blue", alpha=0.5, label="Load")
     plt.legend(handles=[hatched_patch, solid_patch])
-
     plt.tight_layout()
-
-    # Save the plot
     plt.savefig("./data/plots/cam_latency_comparison.png", dpi=600, bbox_inches="tight")
-    # plt.show()
+    plt.show()
     plt.close()
 
 
