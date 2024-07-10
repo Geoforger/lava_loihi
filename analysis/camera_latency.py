@@ -172,15 +172,20 @@ def model_expo(x, a, b):
     return a * np.exp(b * x)
 
 
-def main():
+def main(davis=True):
     ###################################
     # NO LOAD
     ###################################
     # Read in log file
-    filter_crop_path = "./data/cam_latency/filter_crop.log"
-    filter_no_crop_path = "./data/cam_latency/filter_no_crop.log"
-    no_filter_crop_path = "./data/cam_latency/no_filter_crop.log"
-    no_filter_no_crop_path = "./data/cam_latency/no_filter_no_crop.log"
+    if davis is not True:
+        cam = "dvXplorer"
+    else:
+        cam = "DAVIS240"
+
+    filter_crop_path = f"./data/cam_latency/{cam}/filter_crop.log"
+    filter_no_crop_path = f"./data/cam_latency/{cam}/filter_no_crop.log"
+    no_filter_crop_path = f"./data/cam_latency/{cam}/no_filter_crop.log"
+    no_filter_no_crop_path = f"./data/cam_latency/{cam}/no_filter_no_crop.log"
 
     # Parse the log file and get the structured data
     filter_crop_frame = parse_log_file(filter_crop_path)
@@ -238,9 +243,9 @@ def main():
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
     plt.xlabel("Test Number")
     plt.ylabel("Mean Time (ms)")
-    plt.title("Camera Process Latency under no load")
+    plt.title(f"{cam} Camera Process Latency under no load")
     plt.tight_layout()
-    # plt.savefig("./data/plots/cam_latency_no_load.eps", dpi=600)
+    plt.savefig(f"./data/plots/{cam}_latency_no_load.eps", dpi=600)
     # plt.show()
     plt.close()
 
@@ -285,10 +290,10 @@ def main():
     ###################################
     # Test under load tests
     ###################################
-    load_filter_no_crop_path = "./data/cam_latency/load_filter_no_crop.log"
-    load_no_filter_no_crop_path = "./data/cam_latency/load_no_filter_no_crop.log"
-    load_filter_crop_path = "./data/cam_latency/load_filter_crop.log"
-    load_no_filter_crop_path = "./data/cam_latency/load_no_filter_crop.log"
+    load_filter_no_crop_path = f"./data/cam_latency/{cam}/load_filter_no_crop.log"
+    load_no_filter_no_crop_path = f"./data/cam_latency/{cam}/load_no_filter_no_crop.log"
+    load_filter_crop_path = f"./data/cam_latency/{cam}/load_filter_crop.log"
+    load_no_filter_crop_path = f"./data/cam_latency/{cam}/load_no_filter_crop.log"
 
     load_filter_no_crop_frame = parse_log_file(load_filter_no_crop_path, filter_zeros=True)
     load_no_filter_no_crop_frame = parse_log_file(
@@ -356,9 +361,9 @@ def main():
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
     plt.xlabel("Test Number")
     plt.ylabel("Mean Time (ms)")
-    plt.title("Camera Process Latency under load")
+    plt.title(f"{cam} Camera Process Latency under load")
     plt.tight_layout()
-    plt.savefig("./data/plots/cam_latency_load.eps", dpi=600)
+    plt.savefig(f"./data/plots/{cam}_latency_load.eps", dpi=600)
     # plt.show()
     plt.close()
 
@@ -430,11 +435,11 @@ def main():
         patches.append(mpatches.Patch(color=colors[idx], label=name))
 
     plt.legend(handles=patches)
-    plt.title("Process latency against number of incoming spikes")
+    plt.title(f"{cam} Process latency against number of incoming spikes")
     plt.xlabel("Prefiltered Spikes")
     plt.ylabel("Mean Latency (ms)")
     plt.tight_layout()
-    # plt.savefig("./data/plots/cam_latency_load_incoming_spikes.png", dpi=600, bbox_inches="tight")
+    plt.savefig(f"./data/plots/{cam}_latency_load_incoming_spikes.png", dpi=600, bbox_inches="tight")
     # plt.show()
     plt.close()
 
@@ -490,11 +495,11 @@ def main():
     plt.plot(prefiltered_spikes, predicted_quadratic, label='Quadratic Fit', color='green')
     plt.plot(prefiltered_spikes, predicted_logarithmic, label='Logarithmic Fit', color='red')
     plt.plot(prefiltered_spikes, predicted_nlogn, label='n log(n) Fit', color='purple')
-    plt.title("Process latency against number of incoming spikes")
+    plt.title(f"{cam} Process latency against number of incoming spikes")
     plt.xlabel("Prefiltered Spikes")
     plt.ylabel("Mean Latency (ms)")
     plt.tight_layout()
-    plt.show()
+    # plt.show()
     plt.close()
 
     # Calculate R-squared and RMSE for each model
@@ -575,7 +580,7 @@ def main():
     # Set plot labels and title
     plt.xlabel("Condition")
     plt.ylabel("Latency (ms)")
-    plt.title("DAVIS240 Camera Latency Under Load and No Load")
+    plt.title(f"{cam} Camera Latency Under Load and No Load")
     plt.xticks(rotation=45)
 
     # Create custom legend
@@ -585,10 +590,12 @@ def main():
     solid_patch = mpatches.Patch(color="blue", alpha=0.5, label="Load")
     plt.legend(handles=[hatched_patch, solid_patch])
     plt.tight_layout()
-    plt.savefig("./data/plots/cam_latency_comparison.png", dpi=600, bbox_inches="tight")
-    plt.show()
+    plt.savefig(f"./data/plots/{cam}_latency_comparison.png", dpi=600, bbox_inches="tight")
+    # plt.show()
     plt.close()
 
 
 if __name__ == "__main__":
-    main()
+    options = [True, False]
+    for o in options:
+        main(davis=o)
