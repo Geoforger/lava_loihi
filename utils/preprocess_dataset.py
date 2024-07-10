@@ -63,7 +63,7 @@ def PreprocessSample(**kwargs):
 
     print("Processed data")
     return data.data, output_shape
-    
+
 
 def PreprocessDataset(**kwargs):
     """
@@ -123,24 +123,25 @@ def PreprocessDataset(**kwargs):
 
 
 def main(): 
-    dataset = "../data/datasets/ntac_2.5_11texture_100trial_slide_test_06101340/"
-    output = "../data/datasets/preprocessed_dataset/"
+    dataset = "/media/farscope2/T7 Shield/Neuromorphic Data/George/all_speeds_sorted"
+    output = "/media/farscope2/T7 Shield/Neuromorphic Data/George/preproc_dataset/"
 
     args = {
         "DATASET_PATH": dataset,
         "OUTPUT_PATH": output,
-        "pixel_reduction": (20, 2, 50, 30),
-        "lava": True,    # NOTE: THIS SHOULD BE COMMENTED OUT AND NOT SET TO FALSE
+        "pixel_reduction": (160, 170, 60, 110),
+        "lava": True,  # NOTE: THIS SHOULD BE COMMENTED OUT AND NOT SET TO FALSE
         "save": True,
-        "cuttoff": 2000,
+        "cuttoff": 1000,
         "rmv_duplicates": True,
         "pooling": True,
-        "kernel": (4,4),
+        "kernel": (4, 4),
         "stride": 4,
         "threshold": 1,
     }
 
     PreprocessDataset(**args)
+
 
 if __name__ == "__main__":
     main()
