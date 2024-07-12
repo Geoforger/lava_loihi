@@ -47,6 +47,7 @@ class AoDataset(Dataset):
     # Function to retrieve spike data from index
     def __getitem__(self, index):
         filename = self.samples[index]
+        speed = nums_from_string(filename)[-1]
 
         # Get the folder name that contains the file for label
         if self.texture is True:
@@ -63,7 +64,7 @@ class AoDataset(Dataset):
             sampling_time=self.sample_length,
         )
 
-        return spike.reshape(-1, self.num_time_bins), label
+        return spike.reshape(-1, self.num_time_bins), label, speed, filename
 
     # Function to find length of dataset
     def __len__(self):
