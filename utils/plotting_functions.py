@@ -2,8 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# import lava.lib.dl.slayer as slayer
-
 
 def calculate_pooling_dim(input_dim, kernel_dim, stride, order):
     """
@@ -112,32 +110,51 @@ def raster_plot(data, title="Raster Plot",shaded_area=0, display=False, save=Fal
     plt.close()
 
 
-# def raster_plot(data, shaded_area=0, display=False, save=False, path=""):
-#     # Flatten the spike data
-#     spikes_data = data.flatten()
-#     neuron_idx = 0
+def plot_raster_from_array(data, title="Raster Plot", shaded_area=0, display=False, save=False, path=""):
+    """
+    Plot a raster plot from a numpy array of 0s and 1s.
 
-#     for spike_time in spikes_data:
-#         y = np.ones(1) * neuron_idx
-#         plt.plot(spike_time, y, "k|", markersize=0.7)
-#         neuron_idx += 1
+    Parameters:
+    - data: 2D numpy array of shape (n_neurons, n_time_points)
+    - title: Title of the plot
+    - xlabel: Label for the x-axis
+    - ylabel: Label for the y-axis
+    """
+    n_neurons, n_time_points = data.shape
 
-#     fig = plt.figure(1, figsize=(5, 5))
-#     plt.ylabel("Neuron Idx")
-#     plt.xlabel("Time (ms)")
-#     plt.title("Raster Plot")
-#     plt.setp(plt.gca().get_xticklabels(), visible=True)
-#     plt.tick_params(direction="in", which="minor", length=5, bottom=True, top=False)
-#     plt.tick_params(direction="in", which="major", length=8, bottom=True, top=False)
-#     plt.minorticks_on()
-#     plt.rcParams["axes.autolimit_mode"] = "round_numbers"
-#     plt.yticks(np.arange(0, len(spikes_data) + 500, 500))
+    plt.figure(figsize=(10, 6))
 
-#     if shaded_area != 0:
-#         # Add a vertical line at the given point (optional)
-#         plt.axvspan(
-#             shaded_area, max(spikes_data), color="red", alpha=0.3, label="Temporal Crop"
-#         )
+    for neuron in range(n_neurons):
+        spike_times = np.where(data[neuron] == 1)[0]
+        plt.vlines(spike_times, neuron + 0.5, neuron + 1.5)
 
-#     plt.legend()
-#     plt.show()
+    # plt.title(title)
+    # plt.setp(plt.gca().get_xticklabels(), visible=True)
+    # plt.tick_params(direction="in", which="minor", length=5, bottom=True, top=False)
+    # plt.tick_params(direction="in", which="major", length=8, bottom=True, top=False)
+    # plt.minorticks_on()
+    # plt.rcParams["axes.autolimit_mode"] = "round_numbers"
+    # plt.xlabel("Timestep (ms)")
+    # plt.ylabel("Neuron Idx")
+    # plt.yticks(range(1, n_neurons + 1))
+    # plt.ylim(0.5, n_neurons + 0.5)
+
+    # if shaded_area != 0:
+    #     # Place text in the non shaded area to show what is valid data
+    #     valid_centre = (plt.xlim()[0] + shaded_area) / 2
+    #     cropped_centre = (plt.xlim()[1] + shaded_area) / 2
+    #     plt.text(valid_centre, n_neurons + 125, "Valid Data", color="black", ha="center")
+    #     plt.text(cropped_centre, n_neurons + 125, "Cropped Data", color="black", ha="center")
+
+    #     # Shade the area that is cropped
+    #     plt.axvspan(shaded_area, n_time_points, color="grey", alpha=0.3, label="Temporal Crop")
+
+    #     # Add a vertical line at the given point (optional)
+    #     plt.axvline(shaded_area, color="red", linestyle="--", label="Temporal Crop")
+
+    # if save:
+    #     plt.savefig(path, dpi=300, bbox_inches="tight")
+    # if display:
+    #     plt.show()
+
+    # plt.close()
