@@ -123,8 +123,8 @@ def PreprocessDataset(**kwargs):
 
 
 def main(): 
-    dataset = "/media/farscope2/T7 Shield/Neuromorphic Data/George/all_speeds_sorted"
-    output = "/media/farscope2/T7 Shield/Neuromorphic Data/George/preproc_dataset/"
+    dataset = "/media/george/T7 Shield/Neuromorphic Data/George/all_speeds_sorted"
+    output = "/media/george/T7 Shield/Neuromorphic Data/George/preproc_dataset_offset/"
 
     args = {
         "DATASET_PATH": dataset,
@@ -132,6 +132,7 @@ def main():
         "pixel_reduction": (160, 170, 60, 110),
         "lava": True,  # NOTE: THIS SHOULD BE COMMENTED OUT AND NOT SET TO FALSE
         "save": True,
+        "offset": 500,
         "cuttoff": 1000,
         "rmv_duplicates": True,
         "pooling": True,

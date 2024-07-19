@@ -30,7 +30,7 @@ class Network(torch.nn.Module):  # Define network
         super(Network, self).__init__()
 
         neuron_params = {
-            "threshold": 1.25,  # Previously 1.25 # THIS WAS THE CHANGE I MADE BEFORE GOING HOME 22/6/23
+            "threshold": 1.15,  # Previously 1.25
             "current_decay": 0.25,  # Preivously 0.25
             "voltage_decay": 0.03,  # Previously 0.03
             "tau_grad": 0.03,
@@ -39,6 +39,7 @@ class Network(torch.nn.Module):  # Define network
         }
 
         self.output_neurons = int(output_neurons)
+        self.hidden_layer = 50
 
         neuron_params_drop = {
             **neuron_params,
@@ -50,12 +51,18 @@ class Network(torch.nn.Module):  # Define network
                 slayer.block.cuba.Dense(
                     neuron_params_drop,
                     x_size * y_size * 1,
-                    100,
+                    self.hidden_layer,
                     weight_norm=True,
                 ),
+                # slayer.block.cuba.Dense(
+                #     neuron_params_drop,
+                #     250,
+                #     250,
+                #     weight_norm=True,
+                # ),
                 slayer.block.cuba.Dense(
                     neuron_params_drop,
-                    100,
+                    self.hidden_layer,
                     self.output_neurons,
                     weight_norm=True,
                 ),
@@ -111,7 +118,10 @@ def objective(rank, world_size, DATASET_PATH):
     #############################
     # Output params
     #############################
-    OUTPUT_PATH = "../networks/test_network/"
+    OUTPUT_PATH = f"/home/george/Documents/lava_loihi/data/tests/speed_test_offset_{int(time.time())}/"
+    if rank == 0:
+        os.makedirs(OUTPUT_PATH, exist_ok=False)
+        os.makedirs(OUTPUT_PATH+"spikes/", exist_ok=False)
 
     # Read meta for x, y sizes of preproc data
     meta = pd.read_csv(f"{DATASET_PATH}/meta.csv")
@@ -121,9 +131,9 @@ def objective(rank, world_size, DATASET_PATH):
     #############################
     # Training params
     #############################
-    num_epochs = 100
-    learning_rate = 0.0001   # Starting learning rate
-    batch_size = 700
+    num_epochs = 10
+    learning_rate = 0.001   # Starting learning rate
+    batch_size = 320
     hidden_layer = 125
     factor = 3.33   # Factor by which to divide the learning rate
     lr_epoch = 200    # Lower the learning rate by factor every lr_epoch epochs
@@ -132,11 +142,13 @@ def objective(rank, world_size, DATASET_PATH):
 
     # Initialise network and slayer assistant
     net = Network(
-        output_neurons=11,
+        output_neurons=10,
         x_size=x_size,
         y_size=y_size,
-        dropout=0.4
+        dropout=0.5
     ).to(rank)
+    if rank == 0:
+        print(net)
 
     # Create network and distributed object
     net = DDP(net, device_ids=[rank], output_device=rank, find_unused_parameters=False)
@@ -147,7 +159,7 @@ def objective(rank, world_size, DATASET_PATH):
     # Initialise error module
     # TODO: 1) Play around with different error rates, etc.
     error = slayer.loss.SpikeRate(
-        true_rate=0.5, false_rate=0.02, reduction='sum').to(rank)
+        true_rate=0.2, false_rate=0.02, reduction='sum').to(rank)
 
     # Initialise stats and training assistants
     stats = slayer.utils.LearningStats()
@@ -170,6 +182,7 @@ def objective(rank, world_size, DATASET_PATH):
     testing_labels = []
     testing_preds = []
     speed_labels = []
+    depth_labels = []
 
     ##################################
     # Training loop
@@ -195,24 +208,25 @@ def objective(rank, world_size, DATASET_PATH):
         # Training loop
         if rank == 0:
             print("Training...")
-        for _, (input, label, _, f) in enumerate(train_loader):
+        for _, (input, label, _s, _d, _f) in enumerate(train_loader):
             output = assistant.train(input, label)
 
         # Testing loop
         if rank == 0:
             print("Testing...")
-        for _, (input, label, speed, filename) in enumerate(test_loader):
+        for _, (input, label, speed, depth, filename) in enumerate(test_loader):
             output = assistant.test(input, label)
             if epoch == num_epochs - 1:
                 for l in range(len(slayer.classifier.Rate.predict(output))):
-                    testing_labels.append(label[l].cpu())
-                    testing_preds.append(
+                    testing_labels.append(int(label[l].cpu()))
+                    testing_preds.append(int(
                         slayer.classifier.Rate.predict(output)[l].cpu()
-                    )
-                    speed_labels.append(speed[l])
+                    ))
+                    speed_labels.append(int(speed[l]))
+                    depth_labels.append(float(depth[l]))
 
                     # Save output spikes
-                    np.save(f"{OUTPUT_PATH}/spikes/{filename}.npy", output[l].cpu())
+                    np.save(f"{OUTPUT_PATH}/spikes/{filename[l]}", output[l].cpu())
 
         if stats.testing.best_accuracy:
             if rank == 0:
@@ -240,7 +254,8 @@ def objective(rank, world_size, DATASET_PATH):
     test_stats = pd.DataFrame(data={
         "Labels": testing_labels,
         "Predictions": testing_preds,
-        "Speeds": speed_labels
+        "Speeds": speed_labels,
+        "Depths": depth_labels
     })
     test_stats.to_csv(f"{OUTPUT_PATH}/output_labels.csv")
 
@@ -248,10 +263,10 @@ def objective(rank, world_size, DATASET_PATH):
 
 
 def main():
-    DATASET_PATH = "../data/datasets/preprocessed_dataset/"
+    DATASET_PATH = "/media/george/T7 Shield/Neuromorphic Data/George/preproc_dataset_offset/"
     
     # Train test split
-    dataset_split(DATASET_PATH, train_ratio=0.8)
+    dataset_split(DATASET_PATH, train_ratio=0.6)
     
     world_size = 3
     mp.spawn(
