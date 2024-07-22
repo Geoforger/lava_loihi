@@ -35,7 +35,6 @@ class DataProcessor:
     AER:    Bool (default=False)
                 Bool to indicate if loaded data is in AER format
     """
-
     def __init__(self, data=None, AER=False):
         self.data = data
         # Flag to indicate if data has been converted to AER and thus made unavailable for most  operations
@@ -390,7 +389,7 @@ class DataProcessor:
                 t_event=ts_array,
                 payload=None,
             )
-            
+
             self.data = td_event
 
             return td_event
@@ -607,7 +606,7 @@ class DataProcessor:
             noisy_data[x_coord, y_coord] = np.array([])
 
         self.data = noisy_data
-        
+
     def create_lava_array(self, sample_length):
         """
         Method to create a tensor of events compatible with lava input processes
@@ -625,6 +624,18 @@ class DataProcessor:
 
         return event_tensor.reshape(-1, sample_length)
 
+    def find_start(self, threshold):
+        # Flatten and unpack data
+        flat_data = self.data.flatten()
+        unpacked_data = [elt for l in flat_data for elt in l]
+        sorted_data = sorted(unpacked_data)
+
+        # Find where the threshold spikes occur
+        spike_count = 0
+        for spike in sorted_data:
+            spike_count += 1
+            if spike_count >= threshold:
+                return spike
 
 
 # Testing of the class
