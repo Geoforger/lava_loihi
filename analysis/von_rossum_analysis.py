@@ -10,35 +10,30 @@ import numpy as np
 import concurrent.futures
 import itertools
 import pymuvr
+import time
 
-
-# def load_file(file):
-#     with open(file, "rb") as openfile:
-#         try:
-#             data = pickle.load(openfile)
-#         except EOFError:
-#             print(EOFError)
-
-#     return data
-
-def construct_observations(files, shape):
-    observation = np.empty((len(files), shape), dtype=object)
+def construct_observations(files):
+    observation = []
     # Load each sample into the overall observation for this texture
     for f in files:
-        # sample = load_file(f)
         sample = np.load(f, allow_pickle=True)
-
         flat_sample = sample.flatten()
-
-        for cell in range(len(flat_sample)):
-            observation[f][cell] = flat_sample[cell]
+        observation.append([list(l) if l != [] else [] for l in flat_sample])
 
     return observation
 
+def compute_distance_pair(obv_a, obv_b, t_1, t_2, cos, tau):
+    tic = time.time()
+    pair_distance = pymuvr.dissimilarity_matrix(obv_a, obv_b, cos, tau, "distance")
+    toc = time.time()
+    mean_distance = np.mean(pair_distance)
+    print(f"Pair: Texture {t_1} and {t_2}, Time taken: {toc - tic}, Mean distance: {mean_distance}")
+    return (t_1, t_2, mean_distance)
+
 def main():
-    ORIGINAL_DATASET = ("/media/farscope2/T7 Shield/Neuromorphic Data/George/all_speeds_sorted/")
-    DATASET_PATH = "/media/farscope2/T7 Shield/Neuromorphic Data/George/preproc_dataset_spatial_start_pickle/"
-    OUTPUT_PATH = "/home/farscope2/Documents/PhD/lava_loihi/data/dataset_analysis/"
+    ORIGINAL_DATASET = "/media/george/T7 Shield/Neuromorphic Data/George/all_speeds_sorted/"
+    DATASET_PATH = "/media/george/T7 Shield/Neuromorphic Data/George/preproc_dataset_spatial_start_pickle/"
+    OUTPUT_PATH = "/home/george/Documents/lava_loihi/data/dataset_analysis/"
     files = glob.glob(f"{DATASET_PATH}/*.npy")
     print(f"Num samples: {len(files)}")
     dataset_meta = pd.read_csv(f"{ORIGINAL_DATASET}/meta.csv", index_col=0).T
@@ -52,42 +47,56 @@ def main():
     n_speeds = len(speeds)
     n_depths = len(depths)
     n_tex = len(textures)
+    print(f"Num textures: {n_tex}")
     proc_meta["output_shape"] = proc_meta["output_shape"].apply(literal_eval)
-    x_size, y_size = proc_meta["output_shape"].iloc[0]
-    shape = x_size * y_size
+    # x_size, y_size = proc_meta["output_shape"].iloc[0]
+    # shape = x_size * y_size
+    cos = 0.1
+    tau = 1.0
 
-    tex_1 = [f for f in files if f.split("-")[-2] == "1"]
-    spike_train_1 = construct_observations(tex_1, shape)
-    tex_2 = [f for f in files if f.split("-")[-2] == "2"]
-    spike_train_2 = construct_observations(tex_2, shape)
+    # tex_1 = [f for f in files if f.split("-")[-2] == "1"]
+    # spike_train_1 = construct_observations(tex_1, shape)
+    # tex_2 = [f for f in files if f.split("-")[-2] == "2"]
+    # spike_train_2 = construct_observations(tex_2, shape)
+    
+    # # print(spike_train_1[0])
+    # # print(spike_train_1.shape)
+    # cos = 0.1
+    # tau = 1.0
 
-    diss_matrix = pymuvr.dissimilarity_matrix(spike_train_1, spike_train_2, 0, 0, "distance")
+    # print("Calculating Von Rossum distances...")
+    # diss_matrix = pymuvr.dissimilarity_matrix(spike_train_1, spike_train_2, cos, tau, "distance")
+    # # diss_matrix = pymuvr.square_dissimilarity_matrix(spike_train_1, 0.1, 1.0, "distance")
 
-    print(diss_matrix)
-    print(diss_matrix.shape)
+    # print(diss_matrix)
+    # print(diss_matrix.shape)
 
     # Construct matrix of all observations
-    observations = np.empty(n_tex)
+    print("Constructing observation matrix...")
+    observations = np.empty(n_tex, dtype=object)
+    tic = time.time()
     for t in range(n_tex):
-        tex_files = [f for f in files if f.split("-")[-2] == t]
-        observations[t] = construct_observations(tex_files, shape)
-
+        print(f"Constructing observation for texture: {textures[t]}")
+        tex_files = [f for f in files if f.split("-")[-2] == str(t)]
+        observations[t] = construct_observations(tex_files)
+    toc = time.time()
+    print("Observation matrix constructed")
+    print(f"Time taken to create observations: {toc-tic}")
     # Create array to store averages of each distance matrix
     simularity_data = np.empty((n_tex, n_tex))
 
     # Create iterator to iterate through each texture pair
     pairs = list(itertools.combinations(np.arange(n_tex), 2))    
-
-    for (t_1, t_2) in pairs:
-        obv_a = observations[t_1]
-        obv_b = observations[t_2]
-
-        pair_distance = pymuvr.dissimilarity_matrix(
-            obv_a, obv_b, cos=0, tau=0, mode="distance"
-        )
-
-        simularity_data[t_1, t_2], simularity_data[t_2, t_1] = np.mean(pair_distance)
-
+    print("Starting pairwise analysis...")
+    tic = time.time()
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = [executor.submit(compute_distance_pair, observations[t_1], observations[t_2], t_1, t_2, cos, tau) for (t_1, t_2) in pairs]
+        for future in concurrent.futures.as_completed(futures):
+            t_1, t_2, mean_distance = future.result()
+            simularity_data[t_1, t_2] = mean_distance
+            simularity_data[t_2, t_1] = mean_distance
+    toc = time.time()
+    print(f"Total time taken: {toc-tic}")
     print(simularity_data)
 
     data_frame = pd.DataFrame(data=simularity_data, index=textures, columns=textures)
