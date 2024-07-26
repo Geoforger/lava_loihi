@@ -53,71 +53,49 @@ def main():
     cos = 0.1
     tau = 1.0
     BATCH_SIZE = 1
-
-    # Construct matrix of all observations
-    observation_path = Path(f"{OUTPUT_PATH}/observations.npy")
-
-    # if not observation_path.exists():
-    #     print("Constructing observation matrix...")
-    #     observations = np.empty(n_tex, dtype=object)
-    #     tic = time.time()
-    #     for t in range(n_tex):
-    #         print(f"Constructing observation for texture: {textures[t]}")
-    #         tex_files = [f for f in files if f.split("-")[-2] == str(t)]
-    #         observations[t] = construct_observations(tex_files)
-    #     toc = time.time()
-    #     print("Observation matrix constructed")
-    #     print(f"Time taken to create observations: {(toc-tic)/60}mins")
-        
-    #     np.save(f"{OUTPUT_PATH}/observations.npy",observations, allow_pickle=True)
-    #     # observations.tofile(f"{OUTPUT_PATH}/observations_txt.npy") # NOTE: This did not work
-    #     print("Saved data")
-    # else:
-    #     observations = np.load(f"{OUTPUT_PATH}/observations.npy", allow_pickle=True)
-    #     print("Imported data")
         
     # Create array to store averages of each distance matrix
-    simularity_data = np.empty((n_tex, n_tex))
-    self_simularity_data = np.empty(n_tex)
+    simularity_data = np.zeros((n_tex, n_tex))
 
     # Create iterator to iterate through each texture pair
-    pairs = list(itertools.combinations(np.arange(n_tex), 2))    
+    pairs = list(itertools.combinations(np.arange(n_tex), 2))
     print("Starting pairwise analysis...")
     
     tic = time.time()
-    # NOTE: This only performs self comparisons currently
-    for tex in range(n_tex):
-        print(f"Analysing texture: {textures[tex]}")
-        tex_files = [f for f in files if f.split("-")[-2] == str(tex)]
-        tex_observations = construct_observations(tex_files)
-        print("Constructed observations for texture...")
-        num_observations = len(tex_observations)
+    # NOTE: This does not perform self comparisons
+    for (tex_1, tex_2) in pairs:
+        print(f"Analysing textures: {textures[tex_1]} and {textures[tex_2]}")
+        texture_files = [f for f in files if f.split("-")[-2] == str(tex_1) or f.split("-")[-2] == str(tex_2)]
+        tex_files_1 = [f for f in texture_files if f.split("-")[-2] == str(tex_1)]
+        tex_files_2 = [f for f in texture_files if f.split("-")[-2] == str(tex_2)]
+        tex_observations_1 = construct_observations(tex_files_1)
+        tex_observations_2 = construct_observations(tex_files_2)
+        print("Constructed observations for textures...")
         
-        for sample in range(num_observations):
-            # Get rid of sample we're comparing to
-            observations_w_o_sample = [sample for idx, sample in enumerate(tex_observations) if idx != sample]
-    
-            for other_sample in observations_w_o_sample:
+        num_tex1_observations = len(tex_observations_1)
+                
+        for t1_sample in range(num_tex1_observations):
+            for t2_sample in tex_observations_2:
                 with concurrent.futures.ProcessPoolExecutor() as executor:
-                    futures = [executor.submit(compute_distance_pair, [tex_observations[sample]], [other_sample], cos, tau)]
+                    futures = [executor.submit(compute_distance_pair, [tex_observations_1[t1_sample]], [t2_sample], cos, tau)]
         
         sample_means = []       
         for future in concurrent.futures.as_completed(futures):
             mean_distance = future.result()
             sample_means.append(mean_distance)
 
-        texture_mean = np.mean(sample_means)
-        self_simularity_data[tex] = texture_mean
-        print(f"Average distance within texture {textures[tex]} data: {texture_mean}")
-        
+        pair_mean = np.mean(sample_means)
+        print(f"Average distance between textures: {textures[tex_1]} and {textures[tex_2]}: {pair_mean}")
+        simularity_data[tex_1, tex_2], simularity_data[tex_2, tex_1] = pair_mean
+
     toc = time.time()
     print(f"Total time taken: {(toc-tic)/60}mins")
-    print(self_simularity_data)
-    np.save(f"{OUTPUT_PATH}/self_simularity_data.npy", self_simularity_data)
-
-    data_frame = pd.DataFrame(data=self_simularity_data, columns=textures)
+    print(simularity_data)
+    np.save(f"{OUTPUT_PATH}/simulariy.npy", simularity_data)
+    
+    data_frame = pd.DataFrame(data=simularity_data, columns=textures, index=textures)
     print(data_frame)
-    data_frame.to_csv(f"{OUTPUT_PATH}/averaged_self_distance.csv")
+    data_frame.to_csv(f"{OUTPUT_PATH}/averaged_distance.csv")
 
 if __name__ == "__main__":
     main()
