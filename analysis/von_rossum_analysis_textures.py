@@ -25,7 +25,12 @@ def construct_observations(files):
     return observation
 
 def compute_distance_pair(obv_a, obv_b, cos, tau):
-    mean_distance = np.mean(pymuvr.dissimilarity_matrix(obv_a, obv_b, cos, tau, "distance"))
+    try:
+        distances = pymuvr.dissimilarity_matrix(obv_a, obv_b, cos, tau, "distance")
+    except Exception as e:
+        print(f"Task generated an exception: {e}")
+        
+    mean_distance = np.mean(distances)
     return mean_distance
 
 
@@ -62,31 +67,44 @@ def main():
     print("Starting pairwise analysis...")
     
     tic = time.time()
-    # NOTE: This does not perform self comparisons
-    for (tex_1, tex_2) in pairs:
-        print(f"Analysing textures: {textures[tex_1]} and {textures[tex_2]}")
-        texture_files = [f for f in files if f.split("-")[-2] == str(tex_1) or f.split("-")[-2] == str(tex_2)]
-        tex_files_1 = [f for f in texture_files if f.split("-")[-2] == str(tex_1)]
-        tex_files_2 = [f for f in texture_files if f.split("-")[-2] == str(tex_2)]
-        tex_observations_1 = construct_observations(tex_files_1)
-        tex_observations_2 = construct_observations(tex_files_2)
-        print("Constructed observations for textures...")
-        
-        num_tex1_observations = len(tex_observations_1)
-                
-        for t1_sample in range(num_tex1_observations):
-            for t2_sample in tex_observations_2:
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    futures = [executor.submit(compute_distance_pair, [tex_observations_1[t1_sample]], [t2_sample], cos, tau)]
-        
-        sample_means = []       
-        for future in concurrent.futures.as_completed(futures):
-            mean_distance = future.result()
-            sample_means.append(mean_distance)
+   # Create the ProcessPoolExecutor outside the loops
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        for (tex_1, tex_2) in pairs:
+            print(f"Analysing textures: {textures[tex_1]} and {textures[tex_2]}")
+            texture_files = [f for f in files if f.split("-")[-2] == str(tex_1) or f.split("-")[-2] == str(tex_2)]
+            tex_files_1 = [f for f in texture_files if f.split("-")[-2] == str(tex_1)][0]
+            tex_files_2 = [f for f in texture_files if f.split("-")[-2] == str(tex_2)][0]
+            tex_observations_1 = construct_observations(tex_files_1)
+            tex_observations_2 = construct_observations(tex_files_2)
+            print("Constructed observations for textures...")
 
-        pair_mean = np.mean(sample_means)
-        print(f"Average distance between textures: {textures[tex_1]} and {textures[tex_2]}: {pair_mean}")
-        simularity_data[tex_1, tex_2], simularity_data[tex_2, tex_1] = pair_mean
+            num_tex1_observations = len(tex_observations_1)
+
+            futures = []        
+            for t1_sample in range(num_tex1_observations):
+                for t2_sample in tex_observations_2:
+                    futures.append(executor.submit(compute_distance_pair, [tex_observations_1[t1_sample]], [t2_sample], cos, tau))
+
+            print("All tasks submitted")
+            total_tasks = len(futures)
+            completed_tasks = 0
+            
+            sample_means = []       
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    mean_distance = future.result()
+                    sample_means.append(mean_distance)
+                except Exception as e:
+                    print(f"Task generated an exception: {e}")
+            
+                completed_tasks += 1
+                if completed_tasks % 1000 == 0:
+                    print(f"Progress: {completed_tasks}/{total_tasks} tasks completed ({(completed_tasks / total_tasks) * 100:.2f}%)")
+
+            pair_mean = np.mean(sample_means)
+            print(f"Average distance between textures: {textures[tex_1]} and {textures[tex_2]}: {pair_mean}")
+            simularity_data[tex_1, tex_2], simularity_data[tex_2, tex_1] = pair_mean
+
 
     toc = time.time()
     print(f"Total time taken: {(toc-tic)/60}mins")

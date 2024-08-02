@@ -24,8 +24,14 @@ def construct_observations(files):
         
     return observation
 
+
 def compute_distance_pair(obv_a, obv_b, cos, tau):
-    mean_distance = np.mean(pymuvr.dissimilarity_matrix(obv_a, obv_b, cos, tau, "distance"))
+    try:
+        distances = pymuvr.dissimilarity_matrix(obv_a, obv_b, cos, tau, "distance")
+    except Exception as e:
+        print(f"Task generated an exception: {e}")
+        
+    mean_distance = np.mean(distances)
     return mean_distance
 
 
@@ -85,31 +91,43 @@ def main():
     print("Starting pairwise analysis...")
     
     tic = time.time()
-    # NOTE: This only performs self comparisons currently
-    for tex in range(n_tex):
-        print(f"Analysing texture: {textures[tex]}")
-        tex_files = [f for f in files if f.split("-")[-2] == str(tex)]
-        tex_observations = construct_observations(tex_files)
-        print("Constructed observations for texture...")
-        num_observations = len(tex_observations)
-        
-        for sample in range(num_observations):
-            # Get rid of sample we're comparing to
-            observations_w_o_sample = [sample for idx, sample in enumerate(tex_observations) if idx != sample]
-    
-            for other_sample in observations_w_o_sample:
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    futures = [executor.submit(compute_distance_pair, [tex_observations[sample]], [other_sample], cos, tau)]
-        
-        sample_means = []       
-        for future in concurrent.futures.as_completed(futures):
-            mean_distance = future.result()
-            sample_means.append(mean_distance)
 
-        texture_mean = np.mean(sample_means)
-        self_simularity_data[tex] = texture_mean
-        print(f"Average distance within texture {textures[tex]} data: {texture_mean}")
-        
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        for tex in range(n_tex):
+            print(f"Analysing texture: {textures[tex]}")
+            tex_files = [f for f in files if f.split("-")[-2] == str(tex)]
+            tex_observations = construct_observations(tex_files)
+            print("Constructed observations for texture...")
+            num_observations = len(tex_observations)
+            
+            futures = []
+            for sample in range(num_observations):
+                # Get rid of sample we're comparing to
+                observations_w_o_sample = [tex_observations[idx] for idx in range(num_observations) if idx != sample]
+                
+                for other_sample in observations_w_o_sample:
+                    futures.append(executor.submit(compute_distance_pair, [tex_observations[sample]], [other_sample], cos, tau))
+            
+            print("All tasks submitted")
+            total_tasks = len(futures)
+            completed_tasks = 0
+            
+            sample_means = []       
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    mean_distance = future.result()
+                    sample_means.append(mean_distance)
+                except Exception as e:
+                    print(f"Task generated an exception: {e}")
+            
+                completed_tasks += 1
+                if completed_tasks % 1500 == 0:
+                    print(f"Progress: {completed_tasks}/{total_tasks} tasks completed ({(completed_tasks / total_tasks) * 100:.2f}%)")
+                    
+            texture_mean = np.mean(sample_means)
+            self_simularity_data[tex] = texture_mean
+            print(f"Average distance within texture {textures[tex]} data: {texture_mean}")
+
     toc = time.time()
     print(f"Total time taken: {(toc-tic)/60}mins")
     print(self_simularity_data)
