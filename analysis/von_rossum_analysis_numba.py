@@ -12,27 +12,36 @@ from numba import cuda, float64
 import math
 
 @cuda.jit
-def compute_distance_kernel(obv_a, obv_b, cos, tau, distances):
+def compute_distance_kernel(obv_a, obv_b, cos, tau, distances, size_a, size_b):
     i, j = cuda.grid(2)
-    if i < obv_a.shape[0] and j < obv_b.shape[0]:
+    if i < size_a and j < size_b:
         diff = obv_a[i] - obv_b[j]
-        distances[i, j] = math.exp(-diff * diff / tau)
+        distances[i * size_b + j] = math.exp(-diff * diff / tau)
 
-def compute_distance_pair_gpu(obv_a, obv_b, cos, tau):
-    obv_a = np.array(obv_a).flatten().astype(np.float64)
-    obv_b = np.array(obv_b).flatten().astype(np.float64)
-    distances = np.zeros((obv_a.shape[0], obv_b.shape[0]), dtype=np.float64)
+
+def compute_distance_pair_gpu(obv_a, batch_b, cos, tau):
+    flat_obv_a = np.array(obv_a).flatten().astype(np.float64)
+    flat_obv_b = np.concatenate([np.array(obv).flatten().astype(np.float64) for obv in batch_b])
+    
+    size_a = flat_obv_a.shape[0]
+    size_b = flat_obv_b.shape[0] // len(batch_b)  # Each batch element should have the same size
+
+    distances = np.zeros(size_a * size_b, dtype=np.float64)
 
     threadsperblock = (16, 16)
-    blockspergrid_x = int(np.ceil(obv_a.shape[0] / threadsperblock[0]))
-    blockspergrid_y = int(np.ceil(obv_b.shape[0] / threadsperblock[1]))
+    blockspergrid_x = int(np.ceil(size_a / threadsperblock[0]))
+    blockspergrid_y = int(np.ceil(size_b / threadsperblock[1]))
     blockspergrid = (blockspergrid_x, blockspergrid_y)
 
-    compute_distance_kernel[blockspergrid, threadsperblock](obv_a, obv_b, cos, tau, distances)
+    compute_distance_kernel[blockspergrid, threadsperblock](flat_obv_a, flat_obv_b, cos, tau, distances, size_a, size_b)
     cuda.synchronize()
 
-    mean_distance = np.mean(distances)
-    return mean_distance
+    distances = distances.reshape(size_a, size_b)
+    mean_distances = np.mean(distances, axis=1)
+    return mean_distances
+
+
+
 
 def construct_observations(files):
     observations = []
@@ -69,7 +78,8 @@ def main():
     proc_meta["output_shape"] = proc_meta["output_shape"].apply(literal_eval)
     cos = 0.1
     tau = 1.0
-    BATCH_SIZE = 100
+    BATCH_SIZE = 2500
+    MAX_BATCH_SIZE = 4000
 
     simularity_data = np.empty((n_tex, n_tex))
     self_simularity_data = np.empty(n_tex)
@@ -85,26 +95,31 @@ def main():
         tex_observations = construct_observations(tex_files)
         print("Constructed observations for texture...")
         num_observations = len(tex_observations)
+        print(f"Number of observations for texture: {num_observations}")
+        
+        # Place all samples in the batch if it will fit on the GPU
+        if num_observations <= MAX_BATCH_SIZE:
+            BATCH_SIZE = num_observations
 
-        sample_counter = 0  # Initialize the sample counter
+        total_samples = num_observations * num_observations -1
+        sample_counter = 0
         sample_means = []
-        total_samples = num_observations * num_observations - 1
-        for sample in range(num_observations):
-            observations_w_o_sample = [tex_observations[idx] for idx in range(num_observations)if idx != sample]
+        for sample_idx in range(num_observations):
+            obv_a = tex_observations[sample_idx]
 
-            for other_sample in observations_w_o_sample:
-                try:
-                    mean_distance = compute_distance_pair_gpu(
-                        [tex_observations[sample]], [other_sample], cos, tau
-                    )
-                    sample_means.append(mean_distance)
-                except Exception as e:
-                    print(f"Task generated an exception: {e}")
-                    
-                sample_counter += 1  # Increment the sample counter
-                if sample_counter % 1000 == 0:  # Print progress every 100 samples
-                    print(f"Processed {sample_counter} samples / {total_samples} ({(sample_counter / total_samples) * 100:.2f}%) for {textures[tex]}")
+            for batch_start in range(0, num_observations, BATCH_SIZE):
+                batch_b = [tex_observations[idx] for idx in range(batch_start, min(batch_start + BATCH_SIZE, num_observations)) if idx != sample_idx]
 
+                if len(batch_b) > 0:
+                    try:
+                        distances = compute_distance_pair_gpu(obv_a, batch_b, cos, tau)
+                        sample_means.extend(distances)
+                    except Exception as e:
+                        print(f"Task generated an exception: {e}")
+
+            sample_counter += 1
+            if sample_counter % 10 == 0:  # Print progress every 100 samples
+                print(f"Processed {sample_counter} samples / {num_observations} ({(sample_counter / num_observations) * 100:.2f}%) for {textures[tex]}")
 
         texture_mean = np.mean(sample_means)
         self_simularity_data[tex] = texture_mean
