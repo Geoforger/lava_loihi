@@ -9,15 +9,14 @@ import pymuvr
 import time
 from pathlib import Path
 from numba import cuda, float64
-
+import math
 
 @cuda.jit
 def compute_distance_kernel(obv_a, obv_b, cos, tau, distances):
     i, j = cuda.grid(2)
     if i < obv_a.shape[0] and j < obv_b.shape[0]:
         diff = obv_a[i] - obv_b[j]
-        distances[i, j] = np.exp(-diff * diff / tau)
-
+        distances[i, j] = math.exp(-diff * diff / tau)
 
 def compute_distance_pair_gpu(obv_a, obv_b, cos, tau):
     obv_a = np.array(obv_a).flatten().astype(np.float64)
@@ -29,22 +28,20 @@ def compute_distance_pair_gpu(obv_a, obv_b, cos, tau):
     blockspergrid_y = int(np.ceil(obv_b.shape[0] / threadsperblock[1]))
     blockspergrid = (blockspergrid_x, blockspergrid_y)
 
-    compute_distance_kernel[blockspergrid, threadsperblock](
-        obv_a, obv_b, cos, tau, distances
-    )
+    compute_distance_kernel[blockspergrid, threadsperblock](obv_a, obv_b, cos, tau, distances)
     cuda.synchronize()
 
     mean_distance = np.mean(distances)
     return mean_distance
 
-
 def construct_observations(files):
-    observation = []
+    observations = []
     for f in files:
         sample = np.load(f, allow_pickle=True)
         flat_sample = sample.flatten()
-        observation.append([list(l) if len(l) != 0 else [] for l in flat_sample])
-    return observation
+        flat_sample = np.array([item for sublist in flat_sample for item in sublist], dtype=np.float64)
+        observations.append(flat_sample)
+    return observations
 
 
 def main():
@@ -72,7 +69,7 @@ def main():
     proc_meta["output_shape"] = proc_meta["output_shape"].apply(literal_eval)
     cos = 0.1
     tau = 1.0
-    BATCH_SIZE = 1
+    BATCH_SIZE = 100
 
     simularity_data = np.empty((n_tex, n_tex))
     self_simularity_data = np.empty(n_tex)
@@ -89,13 +86,11 @@ def main():
         print("Constructed observations for texture...")
         num_observations = len(tex_observations)
 
+        sample_counter = 0  # Initialize the sample counter
         sample_means = []
+        total_samples = num_observations * num_observations - 1
         for sample in range(num_observations):
-            observations_w_o_sample = [
-                tex_observations[idx]
-                for idx in range(num_observations)
-                if idx != sample
-            ]
+            observations_w_o_sample = [tex_observations[idx] for idx in range(num_observations)if idx != sample]
 
             for other_sample in observations_w_o_sample:
                 try:
@@ -105,6 +100,11 @@ def main():
                     sample_means.append(mean_distance)
                 except Exception as e:
                     print(f"Task generated an exception: {e}")
+                    
+                sample_counter += 1  # Increment the sample counter
+                if sample_counter % 1000 == 0:  # Print progress every 100 samples
+                    print(f"Processed {sample_counter} samples / {total_samples} ({(sample_counter / total_samples) * 100:.2f}%) for {textures[tex]}")
+
 
         texture_mean = np.mean(sample_means)
         self_simularity_data[tex] = texture_mean
