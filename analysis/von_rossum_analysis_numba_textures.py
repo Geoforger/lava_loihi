@@ -91,54 +91,54 @@ def main():
         ** 2
         / 2
     )
+    pairs = list(itertools.combinations(np.arange(n_tex), 2))
 
-    for tex_a in range(n_tex):
+    for tex_a,tex_b in pairs:
         print(f"Analysing texture: {textures[tex_a]}")
         tex_files_a = [f for f in files if f.split("-")[-2] == str(tex_a)]
         tex_observations_a = construct_observations(tex_files_a)
         num_observations_a = len(tex_observations_a)
 
-        for tex_b in [tex for tex in range(n_tex) if tex != tex_a]:  # Ensure each pair is compared only once
-            tex_files_b = [f for f in files if f.split("-")[-2] == str(tex_b)]
-            tex_observations_b = construct_observations(tex_files_b)
-            num_observations_b = len(tex_observations_b)
+        tex_files_b = [f for f in files if f.split("-")[-2] == str(tex_b)]
+        tex_observations_b = construct_observations(tex_files_b)
+        num_observations_b = len(tex_observations_b)
 
-            sample_means = []
+        sample_means = []
 
-            for sample_idx_a in range(num_observations_a):
-                obv_a = tex_observations_a[sample_idx_a]
+        for sample_idx_a in range(num_observations_a):
+            obv_a = tex_observations_a[sample_idx_a]
 
-                for batch_start in range(0, num_observations_b, BATCH_SIZE):
-                    batch_b = [
-                        tex_observations_b[idx]
-                        for idx in range(
-                            batch_start,
-                            min(batch_start + BATCH_SIZE, num_observations_b),
-                        )
-                    ]
-
-                    if len(batch_b) > 0:
-                        try:
-                            distances = compute_distance_pair_gpu(
-                                obv_a, batch_b, cos, tau
-                            )
-                            sample_means.extend(distances)
-                        except Exception as e:
-                            print(f"Task generated an exception: {e}")
-
-                sample_counter += 1
-                percent_complete = (sample_counter / total_comparisons) * 100
-                if sample_counter % 10 == 0:  # Print progress every 10 samples
-                    print(
-                        f"Processed {sample_counter} samples ({percent_complete:.2f}% complete) for texture pair ({textures[tex_a]}, {textures[tex_b]})"
+            for batch_start in range(0, num_observations_b, BATCH_SIZE):
+                batch_b = [
+                    tex_observations_b[idx]
+                    for idx in range(
+                        batch_start,
+                        min(batch_start + BATCH_SIZE, num_observations_b),
                     )
+                ]
 
-            texture_mean = np.mean(sample_means)
-            similarity_data[tex_a, tex_b] = texture_mean
-            similarity_data[tex_b, tex_a] = texture_mean
-            print(
-                f"Average distance between textures {textures[tex_a]} and {textures[tex_b]}: {texture_mean}"
-            )
+                if len(batch_b) > 0:
+                    try:
+                        distances = compute_distance_pair_gpu(
+                            obv_a, batch_b, cos, tau
+                        )
+                        sample_means.extend(distances)
+                    except Exception as e:
+                        print(f"Task generated an exception: {e}")
+
+            sample_counter += 1
+            percent_complete = (sample_counter / total_comparisons) * 100
+            if sample_counter % 10 == 0:  # Print progress every 10 samples
+                print(
+                    f"Processed {sample_counter} samples ({percent_complete:.2f}% complete) for texture pair ({textures[tex_a]}, {textures[tex_b]})"
+                )
+
+        texture_mean = np.mean(sample_means)
+        similarity_data[tex_a, tex_b] = texture_mean
+        similarity_data[tex_b, tex_a] = texture_mean
+        print(
+            f"Average distance between textures {textures[tex_a]} and {textures[tex_b]}: {texture_mean}"
+        )
 
     toc = time.time()
     print(f"Total time taken: {(toc-tic)/60}mins")
