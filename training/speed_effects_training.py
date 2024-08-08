@@ -154,7 +154,7 @@ def objective(rank, world_size, DATASET_PATH):
     net = DDP(net, device_ids=[rank], output_device=rank, find_unused_parameters=False)
 
     # TODO: 1) Play around with different optimisers
-    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=1e-5)
 
     # Initialise error module
     # TODO: 1) Play around with different error rates, etc.
