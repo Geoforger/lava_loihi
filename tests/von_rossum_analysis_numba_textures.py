@@ -1,13 +1,9 @@
 import numpy as np
 import pandas as pd
 import glob
-import pickle
 from ast import literal_eval
-import sys
 import itertools
-import pymuvr
 import time
-from pathlib import Path
 from numba import cuda, float64
 import math
 
@@ -53,11 +49,11 @@ def construct_observations(files):
 
 def main():
     ORIGINAL_DATASET = (
-        "/media/george/T7 Shield/Neuromorphic Data/George/all_speeds_sorted/"
+        "/media/farscope2/T7 Shield/Neuromorphic Data/George/all_speeds_sorted/"
     )
-    DATASET_PATH = "/media/george/T7 Shield/Neuromorphic Data/George/preproc_dataset_spatial_start_pickle/"
+    DATASET_PATH = "/media/farscope2/T7 Shield/Neuromorphic Data/George/preproc_dataset_spatial_start_pickle/"
     OUTPUT_PATH = (
-        "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/"
+        "/media/farscope2/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/"
     )
     files = glob.glob(f"{DATASET_PATH}/*.npy")
     print(f"Num samples: {len(files)}")
@@ -76,7 +72,7 @@ def main():
     proc_meta["output_shape"] = proc_meta["output_shape"].apply(literal_eval)
     cos = 0.1
     tau = 1.0
-    BATCH_SIZE = 2500
+    BATCH_SIZE = 1000
     MAX_BATCH_SIZE = 4000
 
     similarity_data = np.zeros((n_tex, n_tex))

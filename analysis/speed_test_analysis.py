@@ -35,7 +35,8 @@ def main():
     dataset_folder = (
         "/media/farscope2/T7 Shield/Neuromorphic Data/George/all_speeds_sorted/"
     )
-    test_folder = "/home/farscope2/Documents/PhD/lava_loihi/data/speed_tests/speed_test/"
+    test_folder = "/home/farscope2/Documents/PhD/lava_loihi/data/speed_tests/speed_test_1721222363/"
+    plot_folder = "/home/farscope2/Documents/PhD/lava_loihi/data/plots/"
     spikes_folder = f"{test_folder}/spikes/"
 
     # Import test meta params and confusion stats
@@ -49,6 +50,7 @@ def main():
     pred_labels = test_stats["Predictions"].to_list()
     speed_labels = test_stats["Speeds"].to_list()
     depth_labels = test_stats["Depths"].to_list()
+    depths = [str(x) for x in np.unique(depth_labels)]
 
     cnf_matrix = confusion_matrix(real_labels, pred_labels, normalize="true")
     conf_mat_norm = np.around(
@@ -76,7 +78,7 @@ def main():
         rotation_mode="anchor",
     )
     plt.savefig(
-        f"{test_folder}/speed_test_confusion_matrix.png",
+        f"{plot_folder}/speed_test_confusion_matrix.png",
         dpi=600,
         bbox_inches="tight",
     )
@@ -91,14 +93,18 @@ def main():
                                   "Depth": depth_labels
                                 }, columns=["idx", "Label", "Output Label", "Speed", "Depth"])
 
+    testing_stats["Label"] = testing_stats["Label"].apply(
+        lambda x: textures[x]
+    )
+    testing_stats["Output Label"] = testing_stats["Output Label"].apply(
+        lambda x: textures[x]
+    )
+
     # Group by speed and texture
     label_speed_accuracy = (
         testing_stats.groupby(["Speed", "Label"])
         .apply(lambda x: (x["Label"] == x["Output Label"]).mean())
         .reset_index(name="Average Accuracy")
-    )
-    label_speed_accuracy["Label"] = label_speed_accuracy["Label"].apply(
-        lambda x: textures[x]
     )
     print(label_speed_accuracy)
 
@@ -113,9 +119,26 @@ def main():
     plt.xlabel("Speed (mm/s)")
     plt.ylabel("Mean Accuracy")
     plt.title("Mean Accuracy by Speed for Each Texture")
-    plt.legend()
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
     plt.grid(True)
-    plt.savefig(f"{test_folder}/speed_test_accuracy_speed.png", dpi=600, bbox_inches="tight")
+    plt.tight_layout()
+    plt.savefig(f"{plot_folder}/speed_test_accuracy_speed.png", dpi=600)#, bbox_inches="tight")
+    plt.show()
+    plt.close()
+
+    # Calculate the accuracy for each speed (averaged across all textures)
+    speed_accuracy = testing_stats.groupby("Speed").apply(lambda x: (x["Label"] == x["Output Label"]).mean()).reset_index(name="Average Accuracy")
+
+    # Plotting the results
+    plt.figure(figsize=(12, 6))
+    plt.plot(speed_accuracy["Speed"], speed_accuracy["Average Accuracy"], marker='o')
+
+    plt.xlabel("Speed (mm/s)")
+    plt.ylabel("Mean Accuracy")
+    plt.title("Mean Accuracy by Speed")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{plot_folder}/speed_test_accuracy_overall_speed.png", dpi=600, bbox_inches="tight")
     plt.show()
     plt.close()
 
@@ -125,24 +148,48 @@ def main():
         .apply(lambda x: (x["Label"] == x["Output Label"]).mean())
         .reset_index(name="Average Accuracy")
     )
-    label_depth_accuracy["Label"] = label_speed_accuracy["Label"].apply(
-        lambda x: textures[x]
-    )
+    label_depth_accuracy["Depth"] = label_depth_accuracy["Depth"].astype(float)
     print(label_depth_accuracy)
 
     # Line plot for each unique label
     plt.figure(figsize=(12, 6))
     for label in textures:
-        label_data = label_speed_accuracy[label_depth_accuracy["Label"] == label]
+        label_data = label_depth_accuracy[label_depth_accuracy["Label"] == label]
         plt.plot(label_data["Depth"], label_data["Average Accuracy"], label=f"{label}")
 
     plt.xlabel("Depth (mm)")
+    # plt.xticks(np.arange(len(depths)), depths)
     plt.ylabel("Mean Accuracy")
     plt.title("Mean Accuracy by Depth for Each Texture")
-    plt.legend()
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
     plt.grid(True)
+    plt.tight_layout()
     plt.savefig(
-        f"{test_folder}/speed_test_accuracy_depth.png", dpi=600, bbox_inches="tight"
+        f"{plot_folder}/speed_test_accuracy_depth.png", dpi=600, bbox_inches="tight"
+    )
+    plt.show()
+    plt.close()
+
+    # Calculate the accuracy for each speed (averaged across all textures)
+    depth_accuracy = (
+        testing_stats.groupby("Depth")
+        .apply(lambda x: (x["Label"] == x["Output Label"]).mean())
+        .reset_index(name="Average Accuracy")
+    )
+
+    # Plotting the results
+    plt.figure(figsize=(12, 6))
+    plt.plot(depth_accuracy["Depth"], depth_accuracy["Average Accuracy"], marker="o")
+
+    plt.xlabel("Depth (mm)")
+    plt.ylabel("Mean Accuracy")
+    plt.title("Mean Accuracy by Depth")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(
+        f"{plot_folder}/speed_test_accuracy_overall_depth.png",
+        dpi=600,
+        bbox_inches="tight",
     )
     plt.show()
     plt.close()
