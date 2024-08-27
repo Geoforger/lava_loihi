@@ -70,29 +70,29 @@ def test_sample(
     out_adapter = eio.spike.NxToPyAdapter(shape=net.out.shape)
     decision = DecisionMaker(in_shape=out_adapter.out.shape, offset=10, threshold=0.15)
 
-    # root = tk.Tk()
-    # window = VisualiserWindow(root)
-    # decision_vis = DecisionVis(net_out_shape=net.out.shape, window=window, frequency=10)
-    sink = RingBuffer(shape=camera.s_out.shape, buffer=6000)
+    root = tk.Tk()
+    window = VisualiserWindow(root)
+    decision_vis = DecisionVis(net_out_shape=net.out.shape, window=window, frequency=10)
+    # sink = RingBuffer(shape=camera.s_out.shape, buffer=6000)
 
     # Connect all components
-    # camera.s_out.connect(pooling.a_in)
-    # pooling.s_out.connect(cam_encoder.a_in)
-    # cam_encoder.s_out.connect(in_adapter.inp)
-    # in_adapter.out.connect(net.inp)
-    # net.out.connect(out_adapter.inp)
+    camera.s_out.connect(pooling.a_in)
+    pooling.s_out.connect(cam_encoder.a_in)
+    cam_encoder.s_out.connect(in_adapter.inp)
+    in_adapter.out.connect(net.inp)
+    net.out.connect(out_adapter.inp)
 
-    camera.s_out.connect(sink.a_in)
+    # camera.s_out.connect(sink.a_in)
 
-    # out_adapter.out.connect(decision.a_in)
+    out_adapter.out.connect(decision.a_in)
     # Connect decision maker ports
     # decision.s_out.connect(sink.a_in)
-    # decision.s_out.connect(decision_vis.a_in)
-    # decision_vis.acc_in.connect_var(decision.accumulator)
-    # decision_vis.conf_in.connect_var(decision.confidence)
+    decision.s_out.connect(decision_vis.a_in)
+    decision_vis.acc_in.connect_var(decision.accumulator)
+    decision_vis.conf_in.connect_var(decision.confidence)
 
     # Set sim parameters
-    run_cfg = Loihi2HwCfg()
+    run_cfg = Loihi2HwCfg(select_tag="fixed_pt")
     run_condition = RunContinuous()
 
     net._log_config.level = logging.INFO
@@ -129,9 +129,8 @@ def test_sample(
         robot.linear_speed = linear_speed
         robot.angular_speed = angular_speed
         print("Initiating tap...")
-        robot.async_move_linear(tap_move[0])
+        robot.move_linear(tap_move[0])
         print("Tap intiated")
-        time.sleep(0.1)
 
         # Start loihi sim
         # NOTE: Is this blocking?
@@ -141,11 +140,12 @@ def test_sample(
 
         # Slide (blocking)
         print("Sliding...")
-        robot.move_linear(tap_move[1])
-        print("Finished slide")
+        robot.async_move_linear(tap_move[1])
+        robot.async_result()
 
         # Stop sim here
-        runtime.stop()
+        runtime.pause()
+        print("Finished slide")
         # net.stop()
         print("Finished network...")
 
