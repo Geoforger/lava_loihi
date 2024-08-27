@@ -53,6 +53,7 @@ class DecisionMaker(AbstractProcess):
         self.accumulator = Var(
             shape=self.in_shape, init=(np.ones(self.in_shape) * prior)
         )
+        self.decision = Var(shape=(1,), init=None)
 
         self.a_in = InPort(shape=in_shape)
         self.s_out = OutPort(shape=(1,))
@@ -72,6 +73,7 @@ class PyDecisionMaker(PyLoihiProcessModel):
 
     accumulator: np.ndarray = LavaPyType(np.ndarray, np.int64)
     confidence: np.ndarray = LavaPyType(np.ndarray, float)
+    decision: np.ndarray = LavaPyType(np.ndarray, np.int8)
 
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)
@@ -96,10 +98,18 @@ class PyDecisionMaker(PyLoihiProcessModel):
             if (spikes >= self.offset) & (self.confidence >= self.threshold):
                 # NOTE: This returns the first max value in the array
                 # if there are multiple instances of the same value present
-                output_class = np.argmax(self.accumulator)
-                self.s_out.send(np.array([output_class]))
+                self.decision = np.argmax(self.accumulator)
+                self.s_out.send(np.array([self.decision]))
                 return
 
         # If not reached an output, send a random guess
-        decision = np.random.randint(len(self.accumulator))
-        self.s_out.send(np.array([decision]))
+        self.decision = np.random.randint(len(self.accumulator))
+        self.s_out.send(np.array([self.decision]))
+
+    def _pause(self) -> None:
+        """Pause was called by the runtime"""
+        super()._pause()
+
+    def _stop(self) -> None:
+        """Stop was called by the runtime"""
+        super()._stop()
