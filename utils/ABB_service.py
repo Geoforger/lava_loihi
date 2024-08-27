@@ -7,15 +7,15 @@ from cri.robot import SyncRobot, AsyncRobot
 from cri.controller import ABBController
 
 import logging
-logging.basicConfig()  # or your own sophisticated setup
+logging.basicConfig()
 logging.getLogger("Pyro5").setLevel(logging.DEBUG)
 logging.getLogger("Pyro5.core").setLevel(logging.DEBUG)
-
 
 @expose
 class ABBService(object):
     def __init__(self, ip="192.168.125.1") -> None:
         self.controller = AsyncRobot(SyncRobot(ABBController(ip)))
+        self._moving = False
         print(f"Connected to ABB")
 
     def __enter__(self):
@@ -26,6 +26,14 @@ class ABBService(object):
 
     def close(self):
         self.controller.close()
+
+    @property
+    def moving(self):
+        return self._moving
+    
+    @moving.setter
+    def moving(self, val):
+        self._moving = val
 
     @property
     def info(self):
@@ -73,7 +81,7 @@ class ABBService(object):
 
     @property
     def pose(self):
-        return self.controller.pose
+        return list(self.controller.pose)
 
     @property
     def commanded_pose(self):
@@ -104,7 +112,9 @@ class ABBService(object):
 
     @oneway
     def move_linear(self, pose):
+        self.moving = True
         self.controller.move_linear(pose)
+        self.moving = False
 
     def move_linear_blocking(self, pose):
         self.controller.move_linear(pose)
@@ -116,11 +126,21 @@ class ABBService(object):
     def move_circular_blocking(self, via_pose, end_pose):
         self.controller.move_circular(via_pose, end_pose)
 
+    def async_move_linear(self, pose):
+        self.controller.async_move_linear(pose)
+
+    # def async_result(self):
+    #     self.controller.async_result()        
+
+    # @property
+    # def async_done(self):
+    #     return self.controller.async_done()
+
 
 def main():
     parser = ArgumentParser()
     parser.add_argument(
-        "-r", "--robot-ip", type=str, default="192.168.125.1", help="robot IP address"
+        "-r", "--robot-ip", type=str, default="192.168.125.2", help="robot IP address"
     )
     parser.add_argument(
         "-i", "--host-ip", type=str, default="127.0.0.1", help="host IP address"
@@ -144,16 +164,23 @@ def main():
     # Run background bash script that opens pyro namespace
     # This process is closed upon script exit
     print("Starting namespace server...")
-    subprocess.Popen(["pyro5-ns"])
-    time.sleep(2)
+    try:
+        subprocess.Popen(["pyro5-ns"])
+        time.sleep(2)
+    except:
+        print("Name server already running.")
 
     with Daemon(host=host_ip, port=host_port) as daemon, locate_ns() as ns:
+        daemon.MAX_MESSAGE_SIZE = 1024 * 1024 * 10  # 10MB
+        daemon.COMPRESSION = True
+
         print(f"Starting service {service_name} ...")
         service = ABBService()
         service_uri = daemon.register(service)
         ns.register(service_name, service_uri)
         print(f"Service {service_name} running (press CTRL-C to terminate) ...")
         daemon.requestLoop()
+
 
 if __name__ == "__main__":
     main()
