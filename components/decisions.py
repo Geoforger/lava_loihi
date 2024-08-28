@@ -73,7 +73,7 @@ class PyDecisionMaker(PyLoihiProcessModel):
 
     accumulator: np.ndarray = LavaPyType(np.ndarray, np.int64)
     confidence: np.ndarray = LavaPyType(np.ndarray, float)
-    decision: np.ndarray = LavaPyType(np.ndarray, np.int8)
+    decision: np.ndarray = LavaPyType(np.ndarray, int)
 
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)

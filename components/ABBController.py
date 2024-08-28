@@ -43,6 +43,7 @@ class ABBController(AbstractProcess):
 
         self.acc_in = RefPort(self.net_out_shape)
         self.attempt = Var(shape=(1,), init=0)
+        self.moving = Var(shape=(1,), init=False)
 
         # Start speed is speed that gives largest mean distances
         self.lookup_table = np.load(self.lookup_path)
@@ -75,6 +76,7 @@ class PyABBController(PyLoihiProcessModel):
 
     attempt: np.ndarray = LavaPyType(np.ndarray, int)
     slide_speed: np.ndarray = LavaPyType(np.ndarray, int)
+    moving: np.ndarray = LavaPyType(np.ndarray, bool)
 
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)
@@ -107,10 +109,10 @@ class PyABBController(PyLoihiProcessModel):
         )
 
         # Flags to control workflow
-        self.moving = False
+        self.moving = np.array([False])
         self.attempt = 0
         self.attempt_time_step = 0
-        # self.finished = np.array([0])
+        self.finished = False
 
         self.accumulator = np.zeros(self.net_out_shape)
 
@@ -118,42 +120,44 @@ class PyABBController(PyLoihiProcessModel):
         self.robot = self.__make_pyro(self.abb_service)
         print("Connected to ABB pyro...")
         self.robot.tcp = self.robot_tcp
-        self.__robot_home()
+        # self.__robot_home()
         self.__robot_workframe()
 
     def run_spk(self) -> None:
-        self.moving = self.robot.moving     # Flag stored in controller class - does not poll robot directly
-        sample_ts = self.time_step - self.attempt_time_step
+        if not self.finished:
+            self.moving = np.array([self.robot.moving])     # Flag stored in controller class - does not poll robot directly
+            sample_ts = self.time_step - self.attempt_time_step
 
-        if not self.moving:
-            # For first attempt
-            # At first time step move to tap position
-            if sample_ts == 1:
-                print(f"Starting attempt: {self.attempt}")
-                self.__intiate_tap()
-                # This copy prevent overwriting the self.slide_speed with an int value that cant be sent down ref port
-                s = self.slide_speed.copy()[0]
-                self.robot.linear_speed = int(s)
+            if not self.moving[0]:
+                # For first attempt
+                # At first time step move to tap position
+                if sample_ts == 1:
+                    print(f"Starting attempt: {self.attempt}")
+                    self.__intiate_tap()
+                    # This copy prevent overwriting the self.slide_speed with an int value that cant be sent down ref port
+                    s = self.slide_speed.copy()[0]
+                    self.robot.linear_speed = int(s)
 
-            # Tap and start slide
-            elif sample_ts == 2:
-                print("Starting slide")
-                self.robot.move_linear(self.tap_moves[1])
-                print("Sliding")
+                # Tap and start slide
+                elif sample_ts == 2:
+                    print("Starting slide")
+                    self.robot.move_linear(self.tap_moves[1])
+                    print("Sliding")
 
-            # If stopped moving and not in the first steps initiate again
-            else:
-                self.robot.move_linear_blocking(self.tap_moves[2])
-                print(f"Reset ts: {self.time_step}")
-                self.__robot_workframe()
-                self.slide_speed = self.__state_change()
-                self.attempt_time_step = self.time_step
-                self.attempt += 1
+                # If stopped moving and not in the first steps initiate again
+                else:
+                    self.robot.move_linear_blocking(self.tap_moves[2])
+                    print(f"Reset ts: {self.time_step}")
+                    self.__robot_workframe()
+                    self.slide_speed = self.__state_change()
+                    self.attempt_time_step = self.time_step
+                    self.attempt += 1
 
-                if self.attempt > self.timeout:
-                    self._stop()
+                    if self.attempt > self.timeout:
+                        print("Max attempts reached")
+                        self.finished = True
 
-                print("Not Timed out. Starting next attempt...")
+                    print("Not Timed out. Starting next attempt...")
 
     def __make_pyro(self, service) -> Proxy:
         """
@@ -161,7 +165,7 @@ class PyABBController(PyLoihiProcessModel):
         """
         return Proxy(f"PYRONAME:{service}")
 
-    def __robot_home(self, linear_speed:int=50) -> None:
+    def __robot_home(self, linear_speed:int=80) -> None:
         # Set robot to base position
         print("Moving to home position ...")
         self.robot.coord_frame = self.base_frame
@@ -169,7 +173,7 @@ class PyABBController(PyLoihiProcessModel):
         self.robot.move_linear_blocking(self.home_pose)
         print("Robot at home position...")
 
-    def __robot_workframe(self, linear_speed: int = 50) -> None:
+    def __robot_workframe(self, linear_speed: int = 80) -> None:
         print("Moving to origin of work frame ...")
         self.robot.coord_frame = self.work_frame
         self.robot.linear_speed = linear_speed
@@ -219,6 +223,6 @@ class PyABBController(PyLoihiProcessModel):
 
     def _stop(self) -> None:
         """Stop was called by the runtime"""
-        if self.robot is not None:  # TODO: Implement if not robot connection
-            self.robot.close()
+        if self.robot is not None:
+            self.robot._pyroRelease()   # Release the connection to the proxy service
         super()._stop()

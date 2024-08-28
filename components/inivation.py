@@ -9,9 +9,9 @@ import lava.lib.peripherals.dvs.inivation_preproc as preproc
 
 from lava.magma.core.decorator import implements, requires
 from lava.magma.core.model.py.model import PyLoihiProcessModel
-from lava.magma.core.model.py.ports import PyOutPort
+from lava.magma.core.model.py.ports import PyOutPort, PyRefPort
 from lava.magma.core.model.py.type import LavaPyType
-from lava.magma.core.process.ports.ports import OutPort
+from lava.magma.core.process.ports.ports import OutPort, RefPort
 from lava.magma.core.process.process import AbstractProcess
 from lava.magma.core.resources import CPU
 from lava.magma.core.sync.protocols.loihi_protocol import LoihiProtocol
@@ -89,6 +89,7 @@ class InivationCamera(AbstractProcess):
             self.out_shape = (np.prod(self.out_shape),)
 
         self.s_out = OutPort(shape=self.out_shape)
+        self.moving_in = RefPort(shape=(1,))
 
         super().__init__(
             camera_type=self.camera_type,
@@ -119,7 +120,7 @@ class CameraThread():
 
         self.camera_type = camera_type
         self.stop = False
-        self.sync = False
+        self._sync = False
         self.cam_thread = threading.Thread(target=self.store_events, daemon=False)
         self.queue = SimpleQueue()
 
@@ -146,15 +147,16 @@ class CameraThread():
     def get_events(self):
         if self.queue.qsize() > 0:
             return self.queue.get()
-        else:
-            return None
+            
+    def empty_events(self) -> None:
+        self.queue.empty()
 
     def store_events(self) -> None:
         while self.stop is not True:
             # Get batch of events from camera - NOTE: If no sync flag then this function continually drains the camera buffer
             batch = self._camera.getNextEventBatch()
 
-            if self.sync is True:
+            if self._sync:
                 # Add events to the event queue to be read from main proc
                 if batch is not None:
                     self.queue.put(batch)
@@ -165,15 +167,26 @@ class CameraThread():
     def set_start_time(self, start_time) -> None:
         self.start_time = start_time
 
-    def sync_time(self) -> None:
+    @property
+    def sync_time(self) -> bool:
         # Flag to start addding to queue
-        self.sync = True
+        return self._sync
 
+    # TODO: Tidy up messy implementation here
+    # Currently have to handle the lava process handing this setter and array
+    @sync_time.setter
+    def sync_time(self, val) -> None:
+        if type(val) == np.ndarray:
+            val = bool(val[-1])
+        if not isinstance(val, bool):
+            raise ValueError(f"Moving must be a boolean value. Type {type(val)} provided")
+        self._sync = val
 
 @implements(proc=InivationCamera, protocol=LoihiProtocol)
 @requires(CPU)
 class PySparseInivationCameraModel(PyLoihiProcessModel):
     s_out: PyOutPort = LavaPyType(PyOutPort.VEC_SPARSE, int)
+    moving_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, bool)
 
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)
@@ -185,6 +198,7 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.crop_params = proc_params["crop_params"]
 
         self.start_time = None
+        self.arm_moving = False
 
         self.reader = CameraThread(
             camera_type = self.camera_type,
@@ -196,10 +210,14 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         if self.time_step == 1:
             logging.info("\nStart of Test")
 
+        if not self.arm_moving:
+            self.reader.empty_events()
+
         start = time.time_ns()
         # On first iteration clear the cameras buffer to ensure time sync
-        if self.time_step == 2:
-            self.reader.sync_time()
+        # if self.arm == 2:
+        #     self.reader.sync_time = True
+        self.reader.sync_time = self.arm_moving   # NOTE: Based on arm moving flag
 
         # Take event batch from buffer
         self.current_batch = self.reader.get_events()
@@ -229,6 +247,12 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.s_out.send(data, indices)
         end = time.time_ns()
         logging.info(f"{end-start}ns")
+
+    def post_guard(self):
+        return True
+
+    def run_post_mgmt(self):
+        self.arm_moving = self.moving_in.read()
 
     def _create_sparse_vector(self, event_batch) -> ty.Tuple[np.ndarray, np.ndarray]:
         """ Create sparse vector from an event batch"""

@@ -4,9 +4,9 @@ import glob
 
 from lava.magma.core.decorator import implements, requires, tag
 from lava.magma.core.model.py.model import PyLoihiProcessModel
-from lava.magma.core.model.py.ports import PyRefPort
+from lava.magma.core.model.py.ports import PyRefPort, PyInPort
 from lava.magma.core.model.py.type import LavaPyType
-from lava.magma.core.process.ports.ports import RefPort
+from lava.magma.core.process.ports.ports import RefPort, InPort
 from lava.magma.core.process.process import AbstractProcess
 from lava.magma.core.resources import CPU
 from lava.magma.core.sync.protocols.loihi_protocol import LoihiProtocol
@@ -26,8 +26,8 @@ class Datalogger(AbstractProcess):
         self.net_out_shape = net_out_shape
 
         # What data do we want to record
+        self.decision_in = InPort((1,))
         self.conf_in = RefPort((1,))
-        self.decision_in = RefPort((1,))
         self.arm_speed_in = RefPort((1,))
         self.attempt_in = RefPort((1,))
         self.acc_in = RefPort(self.net_out_shape)
@@ -43,9 +43,9 @@ class Datalogger(AbstractProcess):
 @implements(proc=Datalogger, protocol=LoihiProtocol)
 @requires(CPU)
 class PyDatalogger(PyLoihiProcessModel):
+    decision_in: PyInPort = LavaPyType(PyInPort.VEC_DENSE, np.int8)
     conf_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, float)
-    decision_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int8)
-    arm_speed_in: PyRefPort = LavaPyType(PyRefPort.SCALAR_DENSE, int)
+    arm_speed_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, int)
     attempt_in: PyRefPort = LavaPyType(PyRefPort.SCALAR_DENSE, int)
     acc_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int64)
 
@@ -78,6 +78,7 @@ class PyDatalogger(PyLoihiProcessModel):
         )
 
     def run_spk(self) -> None:
+        self.decision = self.decision_in.recv()
         # Append current values to csv file
         inp = {
             "Time Step": self.time_step,
@@ -98,7 +99,6 @@ class PyDatalogger(PyLoihiProcessModel):
     def run_post_mgmt(self):
         # Recieve values from ref ports
         self.conf = self.conf_in.read()
-        self.decision = self.decision_in.read()
         self.arm_speed = self.arm_speed_in.read()
         self.attempt = self.attempt_in.read()
         self.accumulator += self.acc_in.read()

@@ -45,3 +45,7 @@ class PyCustomRingBufferModel(PyLoihiProcessModel):
         on_x_coords, on_y_coords = np.unravel_index(on_events, self.shape)
 
         self.data[0, on_x_coords, on_y_coords, self.time_step - 1] = 1
+
+    def _pause(self) -> None:
+        """Pause was called by the runtime"""
+        super()._pause()

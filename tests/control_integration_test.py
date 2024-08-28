@@ -30,7 +30,7 @@ CompilerOptions.verbose = True
 
 def main():
     run_steps = 100000
-    sim_time = 120
+    sim_time = 25
     loihi = False
     target_label = 0
     output_path = "/home/farscope2/Documents/PhD/lava_loihi/data/arm_tests/"
@@ -128,6 +128,7 @@ def main():
         timeout=5
     )
     abb_controller.acc_in.connect_var(decision.accumulator)
+    camera.moving_in.connect_var(abb_controller.moving)
 
     # Datalogger and connections
     logger = Datalogger(
@@ -135,8 +136,8 @@ def main():
         net_out_shape=net.out.shape,
         target_label=target_label,
     )
+    decision.s_out.connect(logger.decision_in)
     logger.conf_in.connect_var(decision.confidence)
-    # logger.decision_in.connect_var(decision.decision)
     logger.attempt_in.connect_var(abb_controller.attempt)
     logger.arm_speed_in.connect_var(abb_controller.slide_speed)
 
@@ -150,7 +151,9 @@ def main():
     print("Running Network...")
     net.run(condition=run_condition, run_cfg=run_cfg)
     print("Started sim..")
-    time.sleep(sim_time)  # TODO: How to stop sim early
+    for t in range(sim_time):
+        print(f"Sim running for: {t}/{sim_time}s")
+        time.sleep(1)  # TODO: How to stop sim early
     net.stop()
     print("Finished running")
 
