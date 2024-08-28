@@ -3,9 +3,9 @@ import cv2 as cv
 
 from lava.magma.core.decorator import implements, requires
 from lava.magma.core.model.py.model import PyLoihiProcessModel
-from lava.magma.core.model.py.ports import PyInPort
+from lava.magma.core.model.py.ports import PyInPort, PyVarPort
 from lava.magma.core.model.py.type import LavaPyType
-from lava.magma.core.process.ports.ports import InPort
+from lava.magma.core.process.ports.ports import InPort, VarPort
 from lava.magma.core.process.process import AbstractProcess
 from lava.magma.core.resources import CPU
 from lava.magma.core.sync.protocols.loihi_protocol import LoihiProtocol
@@ -83,3 +83,12 @@ class PySparseInivationVisualiserModel(PyLoihiProcessModel):
         colour_image[off_x, off_y] = [0, 255, 0]
 
         self.preview_events(colour_image)
+
+    def _pause(self) -> None:
+        """Pause was called by the runtime"""
+        super()._pause()
+
+    def _stop(self) -> None:
+        """Stop was called by the runtime"""
+        cv.destroyAllWindows()
+        super()._stop()

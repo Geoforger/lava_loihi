@@ -53,7 +53,7 @@ class DecisionMaker(AbstractProcess):
         self.accumulator = Var(
             shape=self.in_shape, init=(np.ones(self.in_shape) * prior)
         )
-        self.decision = Var(shape=(1,), init=None)
+        self.decision = Var(shape=(1,), init=np.array([-1]))
 
         self.a_in = InPort(shape=in_shape)
         self.s_out = OutPort(shape=(1,))
@@ -69,7 +69,7 @@ class DecisionMaker(AbstractProcess):
 @requires(CPU)
 class PyDecisionMaker(PyLoihiProcessModel):
     a_in: PyInPort = LavaPyType(PyInPort.VEC_DENSE, int)
-    s_out: PyOutPort = LavaPyType(PyOutPort.VEC_DENSE, int)
+    s_out: PyOutPort = LavaPyType(PyOutPort.VEC_DENSE, np.int8)
 
     accumulator: np.ndarray = LavaPyType(np.ndarray, np.int64)
     confidence: np.ndarray = LavaPyType(np.ndarray, float)
@@ -104,7 +104,8 @@ class PyDecisionMaker(PyLoihiProcessModel):
 
         # If not reached an output, send a random guess
         self.decision = np.random.randint(len(self.accumulator))
-        self.s_out.send(np.array([self.decision]))
+        self.decision = np.array([self.decision])   # Needs to remain an array at all times
+        self.s_out.send(self.decision)
 
     def _pause(self) -> None:
         """Pause was called by the runtime"""

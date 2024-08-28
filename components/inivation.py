@@ -129,8 +129,8 @@ class CameraThread():
         # Camera init and config
         self._camera = dv.io.CameraCapture(self.camera_type)
         # Set DAVIS cams to only output events - disables frame capture
-        if self._camera.getCameraName().find("DAVIS") != -1:
-            self._camera.setDavisReadoutMode(dv.io.CameraCapture.DavisReadoutMode.EventsOnly)
+        # if self._camera.getCameraName().find("DAVIS") != -1:
+        #     self._camera.setDavisReadoutMode(dv.io.CameraCapture.DavisReadoutMode.EventsOnly)
 
     # Return the starting time of data gathering in milliseconds
     def get_starttime(self) -> None:
@@ -194,7 +194,7 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
 
     def run_spk(self) -> None:
         if self.time_step == 1:
-            logging.info("\nStart of Test\n")
+            logging.info("\nStart of Test")
 
         start = time.time_ns()
         # On first iteration clear the cameras buffer to ensure time sync
@@ -205,24 +205,29 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.current_batch = self.reader.get_events()
 
         if self.current_batch is not None:
+            # print(self.current_batch)
+            logging.info(f"Num prefiltered spikes: {len(self.current_batch)}")
             if self.noise_filter is not None:
                 self.noise_filter.accept(self.current_batch)
                 self.current_batch = self.noise_filter.generateEvents()
 
             data, indices = self._create_sparse_vector(self.current_batch)
-            logging.info(f"Num prefiltered spikes: {len(data)}")
+            logging.info(f"Num precropped spikes: {len(data)}")
 
             # Apply any preprocessing steps
             if self.crop_params is not None:
                 data, indices = preproc.crop(data, indices, cam_shape=self.cam_shape, crop_params=self.crop_params, out_shape=self.out_shape)
+            logging.info(f"Num final spikes: {len(data)}")
         else:
+            logging.info("Num prefiltered spikes: 0")
+            logging.info(f"Num precropped spikes: 0")
+            logging.info(f"Num final spikes: 0")
             data = np.zeros(1)
             indices = np.zeros(1)
 
         # Output spikes
         self.s_out.send(data, indices)
         end = time.time_ns()
-        logging.info(f"Num postfiltered spikes: {len(data)}")
         logging.info(f"{end-start}ns")
 
     def _create_sparse_vector(self, event_batch) -> ty.Tuple[np.ndarray, np.ndarray]:
@@ -246,4 +251,5 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         Helper thread for DVS is also stopped.
         """
         self.reader.join()
+        logging.shutdown()
         super()._stop()

@@ -23,16 +23,17 @@ from lava_loihi.components.ABBController import ABBController
 from lava_loihi.components.Datalogger import Datalogger
 from lava.magma.core.run_conditions import RunContinuous
 from lava.magma.core.run_configs import Loihi2HwCfg, Loihi2SimCfg
-from lava.proc.io.sink import RingBuffer
+# from lava.proc.io.sink import RingBuffer
 from lava.magma.compiler.subcompilers.nc.ncproc_compiler import CompilerOptions
 
 CompilerOptions.verbose = True
 
-
 def main():
     run_steps = 100000
+    sim_time = 120
     loihi = False
     target_label = 0
+    output_path = "/home/farscope2/Documents/PhD/lava_loihi/data/arm_tests/"
 
     # Camera init
     cam_shape = (240, 180)
@@ -126,15 +127,17 @@ def main():
         target_texture="Mesh",
         timeout=5
     )
-    abb_controller.conf_in.connect_var(decision.confidence)
+    abb_controller.acc_in.connect_var(decision.accumulator)
 
     # Datalogger and connections
     logger = Datalogger(
-        out_path="/home/farscope2/Documents/PhD/lava_loihi/data/arm_tests/",
+        out_path=output_path,
+        net_out_shape=net.out.shape,
         target_label=target_label,
     )
     logger.conf_in.connect_var(decision.confidence)
-    logger.decision_in.connect_var(decision.decision)
+    # logger.decision_in.connect_var(decision.decision)
+    logger.attempt_in.connect_var(abb_controller.attempt)
     logger.arm_speed_in.connect_var(abb_controller.slide_speed)
 
     # Set sim parameters
@@ -147,7 +150,7 @@ def main():
     print("Running Network...")
     net.run(condition=run_condition, run_cfg=run_cfg)
     print("Started sim..")
-    time.sleep(20)  # TODO: How to stop sim early
+    time.sleep(sim_time)  # TODO: How to stop sim early
     net.stop()
     print("Finished running")
 

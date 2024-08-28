@@ -140,3 +140,11 @@ class PyThresholdPoolingModel(PyLoihiProcessModel):
         # Ensure indices are within the valid range
         window_idx = np.clip(window_idx, 0, len(self.pooling_indices) - 1)
         return window_idx
+
+    def _pause(self) -> None:
+        """Pause was called by the runtime"""
+        super()._pause()
+
+    def _stop(self) -> None:
+        """Stop was called by the runtime"""
+        super()._stop()

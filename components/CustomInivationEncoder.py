@@ -71,3 +71,11 @@ class PyCustomInivationEncoderModel(PyLoihiProcessModel):
             output_arr[1, on_events] = 1
 
         self.s_out.send(output_arr)
+
+    def _pause(self) -> None:
+        """Pause was called by the runtime"""
+        super()._pause()
+
+    def _stop(self) -> None:
+        """Stop was called by the runtime"""
+        super()._stop()

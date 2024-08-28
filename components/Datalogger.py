@@ -17,21 +17,25 @@ class Datalogger(AbstractProcess):
     def __init__(
         self,
         out_path:str,
+        net_out_shape:tuple,
         target_label:int,
     ) -> None:
 
         self.out_path = out_path
         self.target_label = target_label
+        self.net_out_shape = net_out_shape
 
         # What data do we want to record
         self.conf_in = RefPort((1,))
         self.decision_in = RefPort((1,))
         self.arm_speed_in = RefPort((1,))
+        self.attempt_in = RefPort((1,))
+        self.acc_in = RefPort(self.net_out_shape)
 
         super().__init__(
             out_path = self.out_path,
+            net_out_shape=self.net_out_shape,
             target_label = self.target_label,
-            test_num = self.test_num
         )
 
 
@@ -41,23 +45,36 @@ class Datalogger(AbstractProcess):
 class PyDatalogger(PyLoihiProcessModel):
     conf_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, float)
     decision_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int8)
-    arm_speed_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int8)
+    arm_speed_in: PyRefPort = LavaPyType(PyRefPort.SCALAR_DENSE, int)
+    attempt_in: PyRefPort = LavaPyType(PyRefPort.SCALAR_DENSE, int)
+    acc_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int64)
 
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)
         self.out_path = proc_params["out_path"]
         self.target_label = proc_params["target_label"]
+        self.net_out_shape = proc_params["net_out_shape"]
 
         self.conf = 0.0
         self.decision = None
         self.arm_speed = None
+        self.attempt = None
+        self.accumulator = np.zeros(self.net_out_shape)
 
         # Find the number of files in the output dir
         self.test_num = len(glob.glob(f"{self.out_path}/{self.target_label}-iteration-*.csv"))
 
         # Create output dataframe
         self.data = pd.DataFrame(
-            columns=["Time Step", "Arm Speed", "Target Label", "Decision", "Confidence"]
+            columns=[
+                "Time Step",
+                "Arm Speed",
+                "Target Label",
+                "Decision",
+                "Confidence",
+                "Num Spikes",
+                "Attempt",
+            ]
         )
 
     def run_spk(self) -> None:
@@ -67,7 +84,9 @@ class PyDatalogger(PyLoihiProcessModel):
             "Arm Speed": self.arm_speed,
             "Target Label": self.target_label,
             "Decision": self.decision,
-            "Confidence": self.conf
+            "Confidence": self.conf,
+            "Num Spikes": np.sum(self.accumulator),
+            "Attempt": self.attempt
         }
 
         self.data = pd.concat([self.data, pd.DataFrame(inp, index=[0])], ignore_index=True)
@@ -81,6 +100,8 @@ class PyDatalogger(PyLoihiProcessModel):
         self.conf = self.conf_in.read()
         self.decision = self.decision_in.read()
         self.arm_speed = self.arm_speed_in.read()
+        self.attempt = self.attempt_in.read()
+        self.accumulator += self.acc_in.read()
 
     def post_guard(self):
         return True

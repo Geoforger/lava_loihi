@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from Pyro5.api import expose, Daemon, locate_ns, oneway
 import subprocess
 import time
+import numpy as np
 
 from cri.robot import SyncRobot, AsyncRobot
 from cri.controller import ABBController
@@ -30,9 +31,11 @@ class ABBService(object):
     @property
     def moving(self):
         return self._moving
-    
+
     @moving.setter
     def moving(self, val):
+        if not isinstance(val, bool):
+            raise ValueError("Moving must be a boolean value")
         self._moving = val
 
     @property
@@ -112,12 +115,16 @@ class ABBService(object):
 
     @oneway
     def move_linear(self, pose):
+        print("Starting non blocking move...")
         self.moving = True
         self.controller.move_linear(pose)
         self.moving = False
+        print("Finished non blocking move")
 
     def move_linear_blocking(self, pose):
+        print("Starting blocking move...")
         self.controller.move_linear(pose)
+        print("Finished blocking move")
 
     @oneway
     def move_circular(self, via_pose, end_pose):
@@ -130,7 +137,7 @@ class ABBService(object):
         self.controller.async_move_linear(pose)
 
     # def async_result(self):
-    #     self.controller.async_result()        
+    #     self.controller.async_result()
 
     # @property
     # def async_done(self):
@@ -140,7 +147,7 @@ class ABBService(object):
 def main():
     parser = ArgumentParser()
     parser.add_argument(
-        "-r", "--robot-ip", type=str, default="192.168.125.2", help="robot IP address"
+        "-r", "--robot-ip", type=str, default="192.168.125.1", help="robot IP address"
     )
     parser.add_argument(
         "-i", "--host-ip", type=str, default="127.0.0.1", help="host IP address"
@@ -171,8 +178,8 @@ def main():
         print("Name server already running.")
 
     with Daemon(host=host_ip, port=host_port) as daemon, locate_ns() as ns:
-        daemon.MAX_MESSAGE_SIZE = 1024 * 1024 * 10  # 10MB
-        daemon.COMPRESSION = True
+        # daemon.MAX_MESSAGE_SIZE = 1024 * 1024 * 10  # 10MB
+        # daemon.COMPRESSION = True
 
         print(f"Starting service {service_name} ...")
         service = ABBService()

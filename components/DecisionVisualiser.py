@@ -2,6 +2,7 @@ import numpy as np
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+from matplotlib import pyplot as plt
 
 from lava.magma.core.decorator import implements, requires
 from lava.magma.core.model.py.model import PyLoihiProcessModel
@@ -25,6 +26,8 @@ class DecisionVisualiser(AbstractProcess):
             Main thread tkinter window to display to
         frequency (int, optional):
             Frequency of window update. Default=10
+        save_output (string, optional)
+            Save path for output plot on sim end. Default=None
     Returns:
         None
     """
@@ -33,7 +36,8 @@ class DecisionVisualiser(AbstractProcess):
         self, 
         net_out_shape,
         window,
-        frequency=10
+        frequency=10,
+        save_output=None
     ) -> None:
 
         self.in_shape = (1,)
@@ -42,6 +46,7 @@ class DecisionVisualiser(AbstractProcess):
         self.frequency = frequency
         self.bar_container = None
         self.background = None
+        self.save_output = save_output
 
         self.a_in = InPort(shape=self.in_shape)
         self.conf_in = RefPort((1,))
@@ -57,6 +62,7 @@ class DecisionVisualiser(AbstractProcess):
             net_out_shape=self.net_out_shape,
             window=self.window,
             frequency=self.frequency,
+            save_output=self.save_output,
             acc=self.acc,
             conf=self.conf,
             decision=self.decision,
@@ -77,6 +83,7 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
         self.in_shape = proc_params["in_shape"]
         self.net_out_shape = proc_params["net_out_shape"]
         self.frequency = proc_params["frequency"]
+        self.save_output = proc_params["save_output"] 
         self.acc = proc_params["acc"]
         self.conf = proc_params["conf"]
         self.decision = proc_params["decision"]
@@ -100,8 +107,8 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
         self.ax.set_xlabel("Neuron Idx")
         self.ax.set_ylabel("Spike Count")
         self.ax.set_title("Decision Plotter")
-        self.ax.set_ylim(0, 500)
-        self.ax.set_yticks(np.arange(0,1050,50))
+        self.ax.set_ylim(0, 100)
+        self.ax.set_yticks(np.arange(0,150,50))
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
 
@@ -150,6 +157,20 @@ class PySparseDecisionVisualiserModel(PyLoihiProcessModel):
 
         # Recieve decision for next timestep
         self.decision = self.a_in.recv()
+
+    def _pause(self) -> None:
+        """Pause was called by the runtime"""
+        super()._pause()
+
+    def _stop(self) -> None:
+        """
+        Stop was called by the runtime.
+        """
+        if self.save_output is not None:
+            self.fig.savefig(self.save_output, dpi=300, bbox_inches="tight")
+
+        self.window.root.quit()
+        super()._stop()
 
 
 class VisualiserWindow:

@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 from lava.magma.core.decorator import implements, requires, tag
 from lava.magma.core.model.py.model import PyLoihiProcessModel
@@ -41,7 +42,13 @@ class ABBController(AbstractProcess):
         self.tap_length = abb_params["tap_length"]
 
         self.acc_in = RefPort(self.net_out_shape)
-        self.slide_speed = Var(shape=(1,), init=0)
+        self.attempt = Var(shape=(1,), init=0)
+
+        # Start speed is speed that gives largest mean distances
+        self.lookup_table = np.load(self.lookup_path)
+        mean_dist = np.mean(self.lookup_table, axis=(0, 1))
+        speed_idx = np.argmax(mean_dist)
+        self.slide_speed = Var(shape=(1,), init=self.speeds[speed_idx])
 
         super().__init__(
             net_out_shape=self.net_out_shape,
@@ -65,6 +72,9 @@ class ABBController(AbstractProcess):
 @requires(CPU)
 class PyABBController(PyLoihiProcessModel):
     acc_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int32)
+
+    attempt: np.ndarray = LavaPyType(np.ndarray, int)
+    slide_speed: np.ndarray = LavaPyType(np.ndarray, int)
 
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)
@@ -96,16 +106,11 @@ class PyABBController(PyLoihiProcessModel):
                 [0, self.tap_length, 0, 0, 0, 0],
         )
 
-        # Start speed is speed that gives largest mean distances
-        mean_dist = np.mean(self.lookup_table, axis=(0,1))
-        speed_idx = np.argmax(mean_dist)
-        self.slide_speed = int(self.speeds[speed_idx])
-
         # Flags to control workflow
         self.moving = False
-        self.attempts = 0
+        self.attempt = 0
         self.attempt_time_step = 0
-        self.finished = np.array([0])
+        # self.finished = np.array([0])
 
         self.accumulator = np.zeros(self.net_out_shape)
 
@@ -124,26 +129,31 @@ class PyABBController(PyLoihiProcessModel):
             # For first attempt
             # At first time step move to tap position
             if sample_ts == 1:
-                print(f"Starting attempt: {self.attempts}")
+                print(f"Starting attempt: {self.attempt}")
                 self.__intiate_tap()
-                self.robot.linear_speed = self.slide_speed
+                # This copy prevent overwriting the self.slide_speed with an int value that cant be sent down ref port
+                s = self.slide_speed.copy()[0]
+                self.robot.linear_speed = int(s)
 
             # Tap and start slide
             elif sample_ts == 2:
-                self.robot.move_linear(self.tap_moves[1])
                 print("Starting slide")
-                self.robot.move_linear(self.tap_moves[2])
+                self.robot.move_linear(self.tap_moves[1])
                 print("Sliding")
 
             # If stopped moving and not in the first steps initiate again
             else:
-                self._reset_tap()
-                self.__state_change()
+                self.robot.move_linear_blocking(self.tap_moves[2])
+                print(f"Reset ts: {self.time_step}")
+                self.__robot_workframe()
+                self.slide_speed = self.__state_change()
                 self.attempt_time_step = self.time_step
-                self.attempts += 1
+                self.attempt += 1
 
-                if self.attempts > self.timeout:
+                if self.attempt > self.timeout:
                     self._stop()
+
+                print("Not Timed out. Starting next attempt...")
 
     def __make_pyro(self, service) -> Proxy:
         """
@@ -176,19 +186,26 @@ class PyABBController(PyLoihiProcessModel):
         self.robot.move_linear_blocking(self.tap_moves[0])
         print("Sensor in contact")
 
-    def __state_change(self) -> int:
+    def __state_change(self) -> np.ndarray:
         arg_sort = np.argsort(self.accumulator)
         highest = arg_sort[-1]
         second = arg_sort[-2]
 
-        speed_idx = np.argmax(self.lookup_table[highest, second, :])
-        return self.speeds[speed_idx]
+        # NOTE: This will be replaced when using correct network
+        if highest > 9:
+            if second != 9:
+                highest = second + 1
+            elif second != 0:
+                highest = second - 1
 
-    def _reset_tap(self):
-        print("Moving to workframe...")
-        self.__robot_workframe()
-        print("Robot at workframe")
-        self.__intiate_tap()
+        if second > 9:
+            if highest != 9:
+                second = highest + 1
+            elif highest != 0:
+                second = highest - 1
+
+        speed_idx = np.argmax(self.lookup_table[highest, second, :])
+        return np.array([self.speeds[speed_idx]])
 
     def post_guard(self):
         return True
