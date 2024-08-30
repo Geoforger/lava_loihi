@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import glob
+import scipy.stats as stats
 
 from lava.magma.core.decorator import implements, requires, tag
 from lava.magma.core.model.py.model import PyLoihiProcessModel
@@ -79,6 +80,9 @@ class PyDatalogger(PyLoihiProcessModel):
 
     def run_spk(self) -> None:
         self.decision = self.decision_in.recv()
+
+        entropy = stats.entropy(self.accumulator, base=2)
+
         # Append current values to csv file
         inp = {
             "Time Step": self.time_step,
@@ -86,8 +90,9 @@ class PyDatalogger(PyLoihiProcessModel):
             "Target Label": self.target_label,
             "Decision": self.decision,
             "Confidence": self.conf,
+            "Entropy": entropy,
             "Num Spikes": np.sum(self.accumulator),
-            "Attempt": self.attempt
+            "Attempt": self.attempt,
         }
 
         self.data = pd.concat([self.data, pd.DataFrame(inp, index=[0])], ignore_index=True)
