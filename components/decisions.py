@@ -103,7 +103,8 @@ class PyDecisionMaker(PyLoihiProcessModel):
                 return
 
         # If not reached an output, send a random guess
-        self.decision = np.random.randint(len(self.accumulator))
+        # self.decision = np.random.randint(len(self.accumulator))
+        self.decision = -1
         self.decision = np.array([self.decision])   # Needs to remain an array at all times
         self.s_out.send(self.decision)
 

@@ -211,10 +211,10 @@ class PyABBController(PyLoihiProcessModel):
         speed_idx = np.argmax(self.lookup_table[highest, second, :])
         return np.array([self.speeds[speed_idx]])
 
-    def post_guard(self):
+    def post_guard(self) -> bool:
         return True
 
-    def run_post_mgmt(self):
+    def run_post_mgmt(self) -> None:
         self.accumulator += self.acc_in.read()
 
     def _pause(self) -> None:

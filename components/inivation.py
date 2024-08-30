@@ -15,10 +15,7 @@ from lava.magma.core.process.ports.ports import OutPort, RefPort
 from lava.magma.core.process.process import AbstractProcess
 from lava.magma.core.resources import CPU
 from lava.magma.core.sync.protocols.loihi_protocol import LoihiProtocol
-import logging
 
-# Configure logging
-logging.basicConfig(filename="runtime.log", level=logging.INFO, format="%(message)s")
 
 # TODO: Implement reading from file
 class InivationCamera(AbstractProcess):
@@ -163,6 +160,8 @@ class CameraThread():
 
                 # NOTE: This timing delay is key for operating in "real" time
                 time.sleep(0.001)
+            else:
+                self.empty_events()
 
     def set_start_time(self, start_time) -> None:
         self.start_time = start_time
@@ -181,6 +180,7 @@ class CameraThread():
         if not isinstance(val, bool):
             raise ValueError(f"Moving must be a boolean value. Type {type(val)} provided")
         self._sync = val
+
 
 @implements(proc=InivationCamera, protocol=LoihiProtocol)
 @requires(CPU)
@@ -207,46 +207,32 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.reader.start()
 
     def run_spk(self) -> None:
-        if self.time_step == 1:
-            logging.info("\nStart of Test")
-
-        if not self.arm_moving:
-            self.reader.empty_events()
-
-        start = time.time_ns()
         # On first iteration clear the cameras buffer to ensure time sync
         # if self.arm == 2:
         #     self.reader.sync_time = True
         self.reader.sync_time = self.arm_moving   # NOTE: Based on arm moving flag
+        if not self.arm_moving:
+            self.reader.empty_events()
+            current_batch = None
+        else:
+            current_batch = self.reader.get_events()
 
-        # Take event batch from buffer
-        self.current_batch = self.reader.get_events()
-
-        if self.current_batch is not None:
-            # print(self.current_batch)
-            logging.info(f"Num prefiltered spikes: {len(self.current_batch)}")
+        if current_batch is not None:
             if self.noise_filter is not None:
-                self.noise_filter.accept(self.current_batch)
-                self.current_batch = self.noise_filter.generateEvents()
+                self.noise_filter.accept(current_batch)
+                current_batch = self.noise_filter.generateEvents()
 
-            data, indices = self._create_sparse_vector(self.current_batch)
-            logging.info(f"Num precropped spikes: {len(data)}")
+            data, indices = self._create_sparse_vector(current_batch)
 
             # Apply any preprocessing steps
             if self.crop_params is not None:
                 data, indices = preproc.crop(data, indices, cam_shape=self.cam_shape, crop_params=self.crop_params, out_shape=self.out_shape)
-            logging.info(f"Num final spikes: {len(data)}")
         else:
-            logging.info("Num prefiltered spikes: 0")
-            logging.info(f"Num precropped spikes: 0")
-            logging.info(f"Num final spikes: 0")
             data = np.zeros(1)
             indices = np.zeros(1)
 
         # Output spikes
         self.s_out.send(data, indices)
-        end = time.time_ns()
-        logging.info(f"{end-start}ns")
 
     def post_guard(self):
         return True
@@ -275,5 +261,4 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         Helper thread for DVS is also stopped.
         """
         self.reader.join()
-        logging.shutdown()
         super()._stop()
