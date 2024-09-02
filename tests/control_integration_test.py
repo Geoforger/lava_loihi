@@ -6,6 +6,7 @@ import time
 import tkinter as tk
 from lava.lib.dl import netx
 from lava.proc import embedded_io as eio
+from collections import OrderedDict
 
 import sys
 
@@ -30,22 +31,22 @@ CompilerOptions.verbose = True
 
 def main():
     run_steps = 100000
-    sim_time = 25
+    sim_time = 50
     loihi = False
-    target_label = 0
+    position = 1
     output_path = "/home/farscope2/Documents/PhD/lava_loihi/data/arm_tests/"
 
     # Camera init
-    cam_shape = (240, 180)
+    cam_shape = (640, 480)
     filter = noise.BackgroundActivityNoiseFilter(
-        cam_shape, backgroundActivityDuration=timedelta(milliseconds=10)
+        cam_shape, backgroundActivityDuration=timedelta(milliseconds=33)
     )
-    camera = Camera(noise_filter=filter, flatten=False, crop_params=[20, 2, 50, 30])
+    camera = Camera(noise_filter=filter, flatten=False, crop_params=[60, 110, 160, 170])
 
     # Initialise network
     net = netx.hdf5.Network(
-        net_config="/home/farscope2/Documents/PhD/lava_loihi/networks/trained_davis_net.net",
-        sparse_fc_layer=True,
+        net_config="/media/farscope2/T7 Shield/Neuromorphic Data/George/arm_test_1725038320/network.net",
+        sparse_fc_layer=False,
     )
     print(net)
 
@@ -72,11 +73,11 @@ def main():
     }
 
     abb_params = {
-        "robot_tcp": [0, 0, 101.5, 0, 0, 0],
+        "robot_tcp": [0, 0, 59.0, 0, 0, 0],
         "base_frame": [0, 0, 0, 0, 0, 0],
         "home_pose": [400, 0, 240, 180, 0, 180],
-        "work_frame": [465, -200, 30, 180, 0, 180],
-        "tap_depth": 1.5,
+        "work_frame": [465, -200, 26, 180, 0, 180],
+        "tap_depth": 2.0,
         "tap_length": 50,
     }
 
@@ -124,8 +125,9 @@ def main():
         textures=texture_depths,
         speeds=np.arange(5, 65, 5),
         abb_params=abb_params,
-        target_texture="Mesh",
-        timeout=5
+        target_texture="Felt",
+        tex_index=position,
+        timeout=5,
     )
     abb_controller.acc_in.connect_var(decision.accumulator)
     camera.moving_in.connect_var(abb_controller.moving)
@@ -134,9 +136,10 @@ def main():
     logger = Datalogger(
         out_path=output_path,
         net_out_shape=net.out.shape,
-        target_label=target_label,
+        target_label=position,
     )
     decision.s_out.connect(logger.decision_in)
+    logger.acc_in.connect_var(decision.accumulator)
     logger.conf_in.connect_var(decision.confidence)
     logger.attempt_in.connect_var(abb_controller.attempt)
     logger.arm_speed_in.connect_var(abb_controller.slide_speed)

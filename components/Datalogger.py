@@ -47,7 +47,7 @@ class PyDatalogger(PyLoihiProcessModel):
     decision_in: PyInPort = LavaPyType(PyInPort.VEC_DENSE, np.int8)
     conf_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, float)
     arm_speed_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, int)
-    attempt_in: PyRefPort = LavaPyType(PyRefPort.SCALAR_DENSE, int)
+    attempt_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, int)
     acc_in: PyRefPort = LavaPyType(PyRefPort.VEC_DENSE, np.int64)
 
     def __init__(self, proc_params) -> None:
@@ -73,6 +73,7 @@ class PyDatalogger(PyLoihiProcessModel):
                 "Target Label",
                 "Decision",
                 "Confidence",
+                "Entropy",
                 "Num Spikes",
                 "Attempt",
             ]
@@ -81,7 +82,11 @@ class PyDatalogger(PyLoihiProcessModel):
     def run_spk(self) -> None:
         self.decision = self.decision_in.recv()
 
-        entropy = stats.entropy(self.accumulator, base=2)
+        # Avoids divide by zero error if no spikes yet
+        if np.sum(self.accumulator) > 0:
+            entropy = stats.entropy(self.accumulator, base=2)
+        else:
+            entropy = 0.0
 
         # Append current values to csv file
         inp = {

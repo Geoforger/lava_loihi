@@ -115,7 +115,7 @@ class PyABBController(PyLoihiProcessModel):
 
         # Flags to control workflow
         self.moving = np.array([False])
-        self.attempt = 0
+        self.attempt = np.array([0])
         self.attempt_time_step = 0
         self.finished = False
 
