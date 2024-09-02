@@ -22,6 +22,7 @@ class ABBController(AbstractProcess):
         speeds: np.ndarray,
         abb_params: dict,
         target_texture: dict,
+        tex_index: int=0,
         abb_service: str = "abb_service_1",
         timeout: int = 5
     ) -> None:
@@ -51,11 +52,15 @@ class ABBController(AbstractProcess):
         speed_idx = np.argmax(mean_dist)
         self.slide_speed = Var(shape=(1,), init=self.speeds[speed_idx])
 
+        # Currently choose 0 or 1 of two different poses
+        self.texture_position = [[0, 0, 0, 0, 0, 0], [102, 0, 0, 0, 0, 0]][tex_index]
+
         super().__init__(
             net_out_shape=self.net_out_shape,
             lookup_path=self.lookup_path,
             textures=self.textures,
             speeds=self.speeds,
+            texture_position=self.texture_position,
             robot_tcp=self.robot_tcp,
             base_frame=self.base_frame,
             home_pose=self.home_pose,
@@ -64,7 +69,7 @@ class ABBController(AbstractProcess):
             tap_length=self.tap_length,
             abb_service=self.abb_service,
             target_texture=self.target_texture,
-            timeout=self.timeout
+            timeout=self.timeout,
         )
 
 
@@ -86,6 +91,7 @@ class PyABBController(PyLoihiProcessModel):
         self.target_texture = proc_params["target_texture"]
         self.net_out_shape = proc_params["net_out_shape"]
         self.timeout = proc_params["timeout"]
+        self.texture_position = proc_params["texture_position"]
 
         self.robot_tcp = proc_params["robot_tcp"]
         self.base_frame = proc_params["base_frame"]
@@ -99,13 +105,12 @@ class PyABBController(PyLoihiProcessModel):
         self.lookup_table = np.load(self.lookup_path)
 
         # Pose and tap movements for target texture
-        # NOTE: Only 1 texture per simulation currently
+        texture_x = self.texture_position[0]
         contact_z = self.work_frame[2] - self.textures[self.target_texture]
-        self.obj_pose = [0, 0, contact_z, 0, 0, 0]
         self.tap_moves = (
-                [0, 0, contact_z + self.tap_depth, 0, 0, 0],
-                [0, self.tap_length, contact_z + self.tap_depth, 0, 0, 0],
-                [0, self.tap_length, 0, 0, 0, 0],
+            [texture_x, 0, contact_z + self.tap_depth, 0, 0, 0],
+            [texture_x, self.tap_length, contact_z + self.tap_depth, 0, 0, 0],
+            [texture_x, self.tap_length, 0, 0, 0, 0],
         )
 
         # Flags to control workflow
@@ -121,7 +126,7 @@ class PyABBController(PyLoihiProcessModel):
         print("Connected to ABB pyro...")
         self.robot.tcp = self.robot_tcp
         # self.__robot_home()
-        self.__robot_workframe()
+        self.__robot_workframe(workframe_origin=True)
 
     def run_spk(self) -> None:
         if not self.finished:
@@ -148,7 +153,7 @@ class PyABBController(PyLoihiProcessModel):
                 else:
                     self.robot.move_linear_blocking(self.tap_moves[2])
                     print(f"Reset ts: {self.time_step}")
-                    self.__robot_workframe()
+                    self.__robot_workframe(workframe_origin=False)
                     self.slide_speed = self.__state_change()
                     self.attempt_time_step = self.time_step
                     self.attempt += 1
@@ -173,18 +178,21 @@ class PyABBController(PyLoihiProcessModel):
         self.robot.move_linear_blocking(self.home_pose)
         print("Robot at home position...")
 
-    def __robot_workframe(self, linear_speed: int = 80) -> None:
-        print("Moving to origin of work frame ...")
+    def __robot_workframe(self, linear_speed: int = 80, workframe_origin:bool = False) -> None:
         self.robot.coord_frame = self.work_frame
         self.robot.linear_speed = linear_speed
-        self.robot.move_linear_blocking([0, 0, 0, 0, 0, 0])
-        print("Robot at work place origin...")
-        print("ABB ready for test...")
+        if workframe_origin:
+            print("Moving to origin of work frame ...")
+            self.robot.move_linear_blocking([0, 0, 0, 0, 0, 0])
+            print("Robot at work place origin...")
+        print("Moving to texture pose...")
+        self.robot.move_linear_blocking(self.texture_position)
+        print("ABB ready for test.")
 
     def __intiate_tap(self) -> None:
         self.robot.coord_frame = self.work_frame
         print("Moving to obj pose...")
-        self.robot.move_linear_blocking(self.obj_pose)
+        self.robot.move_linear_blocking(self.texture_position)
         print("Initiating contact...")
         self.robot.linear_speed = 10
         self.robot.move_linear_blocking(self.tap_moves[0])
