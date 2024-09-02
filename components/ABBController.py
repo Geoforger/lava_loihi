@@ -43,7 +43,7 @@ class ABBController(AbstractProcess):
         self.tap_length = abb_params["tap_length"]
 
         self.acc_in = RefPort(self.net_out_shape)
-        self.attempt = Var(shape=(1,), init=0)
+        self.attempt = Var(shape=(1,), init=1)
         self.moving = Var(shape=(1,), init=False)
 
         # Start speed is speed that gives largest mean distances
@@ -115,7 +115,7 @@ class PyABBController(PyLoihiProcessModel):
 
         # Flags to control workflow
         self.moving = np.array([False])
-        self.attempt = np.array([0])
+        self.attempt = np.array([1])
         self.attempt_time_step = 0
         self.finished = False
 
@@ -156,11 +156,13 @@ class PyABBController(PyLoihiProcessModel):
                     self.__robot_workframe(workframe_origin=False)
                     self.slide_speed = self.__state_change()
                     self.attempt_time_step = self.time_step
-                    self.attempt += 1
 
-                    if self.attempt > self.timeout:
+                    if self.attempt >= self.timeout:
                         print("Max attempts reached")
                         self.finished = True
+                    else:
+                        print(f"Finished attempt: {self.attempt}")
+                        self.attempt += 1
 
                     print("Not Timed out. Starting next attempt...")
 
