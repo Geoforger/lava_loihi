@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import threading
-from queue import SimpleQueue
+from queue import SimpleQueue, Queue
 import typing as ty
 # Inivation camera library
 import dv_processing as dv
@@ -144,9 +144,14 @@ class CameraThread():
     def get_events(self):
         if self.queue.qsize() > 0:
             return self.queue.get()
-            
+
     def empty_events(self) -> None:
-        self.queue.empty()
+        while not self.queue.empty():
+            self.queue.get()
+
+    @property
+    def queue_length(self) -> int:
+        return self.queue.qsize()
 
     def store_events(self) -> None:
         while self.stop is not True:
@@ -160,8 +165,6 @@ class CameraThread():
 
                 # NOTE: This timing delay is key for operating in "real" time
                 time.sleep(0.001)
-            else:
-                self.empty_events()
 
     def set_start_time(self, start_time) -> None:
         self.start_time = start_time
