@@ -82,7 +82,11 @@ class PySparseInivationVisualiserModel(PyLoihiProcessModel):
         colour_image[on_x, on_y] = [0, 0, 255]
         colour_image[off_x, off_y] = [0, 255, 0]
 
-        self.preview_events(colour_image)
+        # Make image larger in frame
+        resized_image = cv.resize(colour_image, (800, 600))
+
+        # self.preview_events(colour_image)
+        self.preview_events(resized_image)
 
     def _pause(self) -> None:
         """Pause was called by the runtime"""
