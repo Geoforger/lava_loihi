@@ -12,31 +12,14 @@ def make_robot():
 def make_sensor():
     return NeuroTac(save_events_video=False, save_acc_video=False, display=False)
 
-# def make_meta(
-#         depth,
-#         robot_tcp = [0, 0, 59, 0, 0, 0], # Size of the TacTip (tcp = tool center point)
-#         base_frame = [0, 0, 0, 0, 0, 0], # Origin of the base frame is at centre of the ABB robot base0
-#         home_pose = [400, 0, 240, 180, 0, 180], # Starting point of the robot when switched on
-#         work_frame = [465, -200, 26, 180, 0, 180], # Starting point and reference frame for this experiment
-#         linear_speed = 20, # Robot's speed for linear movements default = 10
-#         angular_speed = 20, # Robot's speed for rotation movements
-#         tap_move = None,   # Sequence of positions for the tap relative to the robot's current pose (positive z goes down)
-#         # obj_poses = [[0, y, 0, 0, 0, 0]for y in range(0, 151, 15)], # Position of the different objects/poses relative to the work frame origin
-#         obj_poses = [[0, 0, 0, 0, 0, 0], [102, 0, 2.2, 0, 0, 0]], # -10: up, 10: down
-#         n_trials = 100, # Number of taps at each pose
-#     ):
 
-#     if tap_move is None:
-#         tap_move = [[0, 0, 3.8 + depth, 0, 0, 0], [0, 30, 3.8 + depth, 0, 0, 0], [0, 30, 0, 0, 0, 0]]
-#     meta = locals().copy()
-#     return meta
 
 def collect_label(label_idx, position_idx, speeds, depths, output_path, tap_distance=60):
     robot_tcp = [0, 0, 59, 0, 0, 0] # Size of the TacTip (tcp = tool center point)
     base_frame = [0, 0, 0, 0, 0, 0] # Origin of the base frame is at centre of the ABB robot base0
     home_pose = [400, 0, 240, 180, 0, 180] # Starting point of the robot when switched on
     work_frame = [465, -200, 26, 180, 0, 180] # Starting point and reference frame for this experiment 
-    obj_poses = [[0, 0, 0, 0, 0, 0], [102, 0, 0, 0, 0, 0]]
+    obj_poses = [[0, 0, 0, 0, 0, 0], [97, 0, 0, 0, 0, 0]]
     n_trials = 100
 
     # Select work frame position between two options
@@ -137,7 +120,7 @@ def collect_label(label_idx, position_idx, speeds, depths, output_path, tap_dist
 
 
 def main():
-    output_path = ""
+    output_path = "/media/ben/T7 Shield/Neuromorphic Data/George/speed_depth_dataset/"
     collect_textures = ["Mesh", "Felt"]   # Change whenever changing physical textures
     speeds = np.arange(15, 65, 10)
     forces = ["1N", "1.5N", "2.5N"]
@@ -156,10 +139,14 @@ def main():
     }
 
     force_depths = {
-        "1N": [],
-        "1.5N": [],
-        "2N": []
+        "1N": [7.5, 10.9, 8.2, 7.5, 10.6, 8.1, 8, 8, 10.1, 8],
+        "1.5N": [7.1, 10, 7.4, 6.8, 9.7, 7.2, 7.1, 7.2, 9.4, 7.3],
+        "2N": [6.6, 8.9, 6.9, 6.8, 9.1, 6.8, 6.7, 6.6, 8.8, 6.8]
     }
+
+    # Make sure there's the correct number of texture depths
+    for key in force_depths.keys():
+        assert len(force_depths[key]) == len(texture_labels.keys())
 
     # Collect each tex at each depth in turn
     for pos_idx, tex in enumerate(range(collect_textures)):
