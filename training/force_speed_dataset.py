@@ -12,7 +12,7 @@ sys.path.append("..")
 from utils.utils import nums_from_string
 
 
-class AoDataset(Dataset):
+class ForceSpeedDataset(Dataset):
     def __init__(
         self,
         path,
@@ -22,7 +22,7 @@ class AoDataset(Dataset):
         sampling_time=1
     ) -> None:
 
-        super(AoDataset, self).__init__()
+        super(ForceSpeedDataset, self).__init__()
 
         # Load in meta file and params from preprocessing step
         meta = pd.read_csv(f"{path}/meta.csv")
@@ -50,18 +50,9 @@ class AoDataset(Dataset):
     # Function to retrieve spike data from index
     def __getitem__(self, index):
         filename = self.samples[index]
-        speed = nums_from_string(filename)[-1]
-        depth = nums_from_string(filename)[-4]
-        
-        if depth == 5:
-            depth = 1.5
-            
-        # Get the folder name that contains the file for label
-        if self.texture is True:
-            label = nums_from_string(filename)[-2]
-        else:
-            # TODO: Write code for if we want speed
-            pass
+        force = nums_from_string(filename)[-4]
+        speed = nums_from_string(filename)[-3]
+        label = nums_from_string(filename)[-2]
 
         event = slayer.io.read_np_spikes(filename)
         spike = event.fill_tensor(
@@ -71,7 +62,7 @@ class AoDataset(Dataset):
             sampling_time=self.sampling_time
         )
 
-        return spike.reshape(-1, self.num_time_bins), label, speed, depth, filename.split("/")[-1]
+        return spike.reshape(-1, self.num_time_bins), label, speed, force
 
     # Function to find length of dataset
     def __len__(self):
