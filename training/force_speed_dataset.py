@@ -45,7 +45,7 @@ class ForceSpeedDataset(Dataset):
         if valid is True:
             self.PATH = f"{path}/valid/"
 
-        self.samples = glob.glob(f"{self.PATH}*.npy")
+        self.samples = glob.glob(f"{self.PATH}*_on.npy")
 
     # Function to retrieve spike data from index
     def __getitem__(self, index):
