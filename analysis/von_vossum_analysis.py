@@ -26,17 +26,18 @@ plt.rcParams.update(
 )
 
 def main():
-    speeds = np.arange(5,65,5)
-    results_path = "/media/farscope2/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_speed_similarity_data.npy"
-    output_path = "/home/farscope2/Documents/PhD/lava_loihi/data/dataset_analysis/"
+    speeds = np.arange(15,65,10)
+    results_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy"
+    output_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/"
     results = np.load(results_path)
     # print(results)
 
-    results_frame_path = "/media/farscope2/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/averaged_tex_distances_speed_60.csv"
+    results_frame_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/averaged_tex_tex_distance_speed_55.csv"
     results_frame = pd.read_csv(results_frame_path)
     textures = list(results_frame)
     textures.pop(0)
     print(textures)
+    print(speeds)
 
     # results = results.drop(results.columns[0], axis=1)
     # textures = list(results)
@@ -95,8 +96,8 @@ def main():
         )
         plt.xlabel("MDS Dimension 1")
         plt.ylabel("MDS Dimension 2")
-        plt.xlim(-0.022, 0.02)
-        plt.ylim(-0.022, 0.02)
+        plt.xlim(-80, 80)
+        plt.ylim(-80, 80)
         plt.grid(True)
         plt.savefig(
             f"{output_path}/starting_van_rossum_mds_{speed}.png", dpi=300, bbox_inches="tight"

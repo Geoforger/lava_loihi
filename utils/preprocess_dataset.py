@@ -27,48 +27,54 @@ def PreprocessSample(**kwargs):
     """
     # input_path = kwargs["DATASET_PATH"]
     filename = kwargs["sample"]
+    try:
+        data = DataProcessor.load_data(path=filename)
 
-    data = DataProcessor.load_data(path=filename)
+        # Check args presented and apply preprocessing
+        if "pixel_reduction" in kwargs:
+            pixel_vals = kwargs["pixel_reduction"]
+            data.pixel_reduction(pixel_vals[0], pixel_vals[1], pixel_vals[2], pixel_vals[3])
 
-    # Check args presented and apply preprocessing
-    if "pixel_reduction" in kwargs:
-        pixel_vals = kwargs["pixel_reduction"]
-        data.pixel_reduction(pixel_vals[0], pixel_vals[1], pixel_vals[2], pixel_vals[3])
+        # Clip to start of sample
+        if "start_thresh" in kwargs:
+            sample_start = data.find_start(threshold=kwargs["start_thresh"])
+            data.offset_values(sample_start, reduce=True)
 
-    # Clip to start of sample
-    sample_start = data.find_start(threshold=kwargs["start_thresh"])
-    data.offset_values(sample_start, reduce=True)
+        if "offset" in kwargs:
+            data.offset_values(kwargs["offset"], reduce=True)
+        if "cuttoff" in kwargs:
+            data.remove_cuttoff(kwargs["cuttoff"])
+        if "rmv_duplicates" in kwargs:
+            data.remove_duplicates()
+        if "pooling" in kwargs:
+            kernel = kwargs["kernel"]
+            stride = kwargs["stride"]
+            threshold = kwargs["threshold"]
+            data.threshold_pooling(kernel, stride, threshold)
+        output_shape = data.data.shape
 
-    if "offset" in kwargs:
-        data.offset_values(kwargs["offset"], reduce=True)
-    if "cuttoff" in kwargs:
-        data.remove_cuttoff(kwargs["cuttoff"])
-    if "rmv_duplicates" in kwargs:
-        data.remove_duplicates()
-    if "pooling" in kwargs:
-        kernel = kwargs["kernel"]
-        stride = kwargs["stride"]
-        threshold = kwargs["threshold"]
-        data.threshold_pooling(kernel, stride, threshold)
-    output_shape = data.data.shape
-    if "lava" in kwargs:
-        data.create_events()
+        if "save" in kwargs and "OUTPUT_PATH" in kwargs:
+            out_path = kwargs["OUTPUT_PATH"]
+            filename = f"{filename.split('/')[-1]}"
 
-    if "save" in kwargs and "OUTPUT_PATH" in kwargs:
-        out_path = kwargs["OUTPUT_PATH"]
-        filename = f"{filename.split('/')[-1]}"
+            if "lava" in kwargs and kwargs["lava"] is True:
+                data.create_events()
+                slayer.io.encode_np_spikes(f"{out_path}/{filename}", data.data)
+            else:
+                data.save_data_np(f"{out_path}/{filename}")
 
-        if "lava" in kwargs and kwargs["lava"] is True:
-            slayer.io.encode_np_spikes(f"{out_path}/{filename}", data.data)
-        else:
-            data.save_data_np(f"{out_path}/{filename}")
+        elif "save" in kwargs and "OUTPUT_PATH" not in kwargs:
+            raise Exception("No filename provided to save processed data to")
 
-    elif "save" in kwargs and "OUTPUT_PATH" not in kwargs:
-        raise Exception("No filename provided to save processed data to")
-
-    print("Processed data")
-    return data.data, output_shape
-
+        print("Processed data")
+        return data.data, output_shape
+    
+    except Exception as e:
+        # Log sample name if fail to import
+        d = {"filename":[filename]}
+        print(e)
+        print(d)
+        return
 
 def PreprocessDataset(**kwargs):
     """
@@ -128,17 +134,17 @@ def PreprocessDataset(**kwargs):
 
 
 def main(): 
-    dataset = "/media/george/T7 Shield/Neuromorphic Data/George/all_speeds_sorted"
-    output = "/media/george/T7 Shield/Neuromorphic Data/George/preproc_dataset_offset/"
+    dataset = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_dataset"
+    output = "/media/george/T7 Shield/Neuromorphic Data/George/preprocessed_new_dataset/"
 
     args = {
         "DATASET_PATH": dataset,
         "OUTPUT_PATH": output,
-        "pixel_reduction": (160, 170, 60, 110),
-        "lava": True,
+        "pixel_reduction": (195, 170, 102, 110),
+        "lava": False,
         "save": True,
-        "start_thresh": 50,
-        "offset": 500,
+        # "start_thresh": 50,
+        # "offset": 100,
         "cuttoff": 1000,
         "rmv_duplicates": True,
         "pooling": True,
