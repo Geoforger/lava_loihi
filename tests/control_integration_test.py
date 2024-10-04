@@ -6,7 +6,6 @@ import time
 import tkinter as tk
 from lava.lib.dl import netx
 from lava.proc import embedded_io as eio
-from collections import OrderedDict
 
 import sys
 
@@ -33,51 +32,72 @@ def main():
     run_steps = 100000
     sim_time = 50
     loihi = False
+    off_events = False
     position = 1
+    force = "1N"
     output_path = "/home/farscope2/Documents/PhD/lava_loihi/data/arm_tests/"
+    target_texture = "Felt"
 
     # Camera init
     cam_shape = (640, 480)
     filter = noise.BackgroundActivityNoiseFilter(
-        cam_shape, backgroundActivityDuration=timedelta(milliseconds=33)
+        cam_shape, backgroundActivityDuration=timedelta(milliseconds=10)
     )
-    camera = Camera(noise_filter=filter, flatten=False, crop_params=[60, 110, 160, 170])
-
-    # Initialise network
-    net = netx.hdf5.Network(
-        net_config="/media/farscope2/T7 Shield/Neuromorphic Data/George/arm_test_1725038320/network.net",
-        sparse_fc_layer=False,
-    )
-    print(net)
+    camera = Camera(noise_filter=filter, flatten=False, crop_params=[102, 110, 195, 170], arm_connected=True)
+    print(camera.s_out.shape)
 
     # Init other components
     pooling = Pooling(
-        in_shape=camera.out_shape, kernel=(4, 4), stride=(4, 4), threshold=1
+        in_shape=camera.out_shape, kernel=(4, 4), stride=(4, 4), threshold=1, off_events=off_events
     )
+
+    # Initialise network
+    net = netx.hdf5.Network(
+        net_config="/home/farscope2/Documents/PhD/lava_loihi/networks/best_arm_network/network.net",
+        sparse_fc_layer=False,
+        input_shape=np.prod(
+            pooling.s_out.shape,
+        ),
+    )
+    print(net)
+
     # NOTE: I have an encoder that takes camera -> dense -> nx encoder
     #       This could be skipped if I could be bothered to code in C
     cam_encoder = CamEncoder(pooling.s_out.shape)
     input_vis = Vis(in_shape=pooling.out_shape, flattened_input=False)
 
-    texture_depths = {
-        "Mesh": 20.7,
-        "Felt": 22.2,
-        "Cotton": 20.4,
-        "Nylon": 20.4,
-        "Fur": 22.5,
-        "Wood": 20.5,
-        "Acrylic": 19.8,
-        "FashionFabric": 19.8,
-        "Wool": 22.2,
-        "Canvas": 20.0,
+    texture_labels = {
+        "Mesh": 0,
+        "Felt": 1,
+        "Cotton": 2,
+        "Nylon": 3,
+        "Fur": 4,
+        "Wood": 5,
+        "Acrylic": 6,
+        "FashionFabric": 7,
+        "Wool": 8,
+        "Canvas": 9
     }
 
+    force_depths = {
+        "1N": [9.3, 10.5, 9.2, 9.2, 11.5, 9, 9, 9.2, 11.5, 9.4],
+        "1.5N": [8.6, 9.7, 8.5, 8.3, 10.1, 8.1, 8.2, 8.4, 10.7, 8.6],
+        "2N": [7.9, 9.1, 8.0, 7.7, 9.7, 7.5, 7.6, 7.8, 10.1, 8]
+    }
+
+    # Find the correct z coordinates for the given force
+    input_forces = {}
+    for tex in texture_labels.keys():
+        i = texture_labels[tex]
+        input_forces[tex] = force_depths[force][i]
+
+    print(input_forces)
+
     abb_params = {
-        "robot_tcp": [0, 0, 59.0, 0, 0, 0],
+        "robot_tcp": [0, 0, 90, 0, 0, 0],
         "base_frame": [0, 0, 0, 0, 0, 0],
         "home_pose": [400, 0, 240, 180, 0, 180],
         "work_frame": [465, -200, 26, 180, 0, 180],
-        "tap_depth": 2.0,
         "tap_length": 50,
     }
 
@@ -121,11 +141,11 @@ def main():
     # Arm controller and connections
     abb_controller = ABBController(
         net_out_shape=net.out.shape,
-        lookup_path="/home/farscope2/Documents/PhD/lava_loihi/data/dataset_analysis/tex_speed_similarity_data.npy",
-        textures=texture_depths,
+        lookup_path="/home/farscope2/Documents/PhD/lava_loihi/data/dataset_analysis/tex_tex_speed_similarity_data.npy",
+        forces=input_forces,
         speeds=np.arange(5, 65, 5),
         abb_params=abb_params,
-        target_texture="Felt",
+        target_texture=target_texture,
         tex_index=position,
         timeout=5,
     )
@@ -136,7 +156,7 @@ def main():
     logger = Datalogger(
         out_path=output_path,
         net_out_shape=net.out.shape,
-        target_label=position,
+        target_label=texture_labels[target_texture],
     )
     decision.s_out.connect(logger.decision_in)
     logger.acc_in.connect_var(decision.accumulator)
