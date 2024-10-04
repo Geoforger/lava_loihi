@@ -20,7 +20,7 @@ class ForceSpeedDataset(Dataset):
         train,
         valid=False,
         texture=True,
-        sampling_time=10
+        sampling_time=1
     ) -> None:
 
         super(ForceSpeedDataset, self).__init__()
@@ -60,12 +60,9 @@ class ForceSpeedDataset(Dataset):
 
         event = event.data
 
-        spike = event.fill_tensor(
-            torch.zeros(
-                1, self.y_size, self.x_size, self.num_time_bins, requires_grad=False
-            ),
-            sampling_time=self.sampling_time,
-        )
+        spike = torch.from_numpy(event.to_tensor(
+            sampling_time=1, dim=(1, self.y_size, self.x_size, self.num_time_bins)
+        ))
 
         return spike.reshape(-1, self.num_time_bins), label, speed, force
 
