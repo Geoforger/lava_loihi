@@ -10,6 +10,7 @@ from ast import literal_eval
 
 sys.path.append("..")
 from utils.utils import nums_from_string
+from utils.data_processor import DataProcessor
 
 
 class ForceSpeedDataset(Dataset):
@@ -19,7 +20,7 @@ class ForceSpeedDataset(Dataset):
         train,
         valid=False,
         texture=True,
-        sampling_time=1
+        sampling_time=10
     ) -> None:
 
         super(ForceSpeedDataset, self).__init__()
@@ -45,7 +46,7 @@ class ForceSpeedDataset(Dataset):
         if valid is True:
             self.PATH = f"{path}/valid/"
 
-        self.samples = glob.glob(f"{self.PATH}*_on.npy")
+        self.samples = glob.glob(f"{self.PATH}*_on.pickle.npy")
 
     # Function to retrieve spike data from index
     def __getitem__(self, index):
@@ -54,12 +55,16 @@ class ForceSpeedDataset(Dataset):
         speed = nums_from_string(filename)[-3]
         label = nums_from_string(filename)[-2]
 
-        event = slayer.io.read_np_spikes(filename)
+        event = DataProcessor.load_data_np(filename)
+        event.create_events()
+
+        event = event.data
+
         spike = event.fill_tensor(
             torch.zeros(
                 1, self.y_size, self.x_size, self.num_time_bins, requires_grad=False
             ),
-            sampling_time=self.sampling_time
+            sampling_time=self.sampling_time,
         )
 
         return spike.reshape(-1, self.num_time_bins), label, speed, force
