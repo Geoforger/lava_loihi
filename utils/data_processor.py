@@ -308,12 +308,14 @@ class DataProcessor:
     def save_data_np(self, PATH):
         np.save(PATH, self.data, allow_pickle=True)
 
-    def offset_values(self, offset, reduce=False):
+    def offset_values(self, offset, downsample=None, reduce=False):
         """Function to offset input data to avoid negative spike times
         Arguments
         ---------
         offset:     int
                         offset to add to each event in ms
+        downsample: bool
+                        Enabling downsampling here rounds each event to the nearest 10ms, deleting duplicates
         reduce:     bool
                         Set to true if data is already offset and should be clipped back rather than forwards. Default = False
         """
@@ -327,15 +329,16 @@ class DataProcessor:
                 if self.data[y, x] != []:
                     # If need to clip data back then remove all before offset and reduce all values by offset
                     if reduce:
-                        temp_list = [
-                            (spike - offset)
-                            for spike in self.data[y, x]
-                            if spike >= offset
-                        ]
+                        temp_list = [spike for spike in self.data[y, x] if spike >= offset]
+                        temp_lise = [(spike - offset) for spike in temp_list]
                     # Else simply add the offset to each spike
                     else:
                         temp_list = [(spike + offset) for spike in self.data[y, x]]
-
+                
+                # This rounds to the nearest 10ms for downsampling purposes
+                if downsample is not None:
+                    temp_list = set([round(spike, -1) for spike in temp_list])
+                
                 self.data[y, x] = temp_list
 
     def create_events(self, ON_OFF=1):
@@ -636,7 +639,6 @@ class DataProcessor:
             spike_count += 1
             if spike_count >= threshold:
                 return spike
-
 
 # Testing of the class
 if __name__ == "__main__":
