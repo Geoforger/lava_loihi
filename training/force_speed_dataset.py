@@ -12,7 +12,6 @@ sys.path.append("..")
 from utils.utils import nums_from_string
 from utils.data_processor import DataProcessor
 
-
 class ForceSpeedDataset(Dataset):
     def __init__(
         self,
