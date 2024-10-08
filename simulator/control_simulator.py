@@ -70,7 +70,6 @@ class ControlSimulator():
         self.filename = None
         self.current_attempt = 1
 
-
     def find_starting_speed(self, lookup_path) -> tuple:
         """
         Method to find starting speed that gives the highest average distance in lookup table
@@ -81,7 +80,7 @@ class ControlSimulator():
 
         return self.speeds[speed_idx], lookup_table
 
-    def state_change(self) -> int:
+    def state_change(self) -> None:
         """
         Method to use the lookup table to find the new exploratory speed for the robot
         """
@@ -103,11 +102,11 @@ class ControlSimulator():
         #         second = highest - 1
 
         speed_idx = np.argmax(self.lookup_table[highest, second, :])
-        return self.speeds[speed_idx]
+        self.speed = self.speeds[speed_idx]
 
     def test_with_netx(self) -> None:
         """
-        Method to run the chosen file through the simulation
+        Method to run a random file through the simulation
         """
         net = netx.hdf5.Network(net_config=self.network_path)
         run_condition = RunSteps(num_steps=self.sample_length)
@@ -153,7 +152,7 @@ class ControlSimulator():
         confidence = highest_spikes / total_spikes
         entropy = self.__calculate_entropy(highest_spikes)
 
-        # Append current values to csv file
+        # Append test values to dataframe
         inp = {
             "Filename": np.repeat(self.filename, self.sample_length),
             "Arm Speed": np.repeat(self.speed, self.sample_length),
@@ -169,8 +168,8 @@ class ControlSimulator():
             [self.data, pd.DataFrame(inp)], ignore_index=True
         )
 
+        # Save dataframe to csv at end of testing
         if self.current_attempt == self.timeout:
-            # Save output dataframe
             self.data.to_csv(
                 f"{self.output_path}/{self.sim_label}-iteration-{self.test_num}.csv"
             )
