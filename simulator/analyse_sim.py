@@ -48,7 +48,7 @@ def main():
 
     # Step 2: Plot frequency of 'Arm Speed' across the entire dataset
     plt.figure(figsize=(12, 6))
-    sns.countplot(x='Arm Speed', data=data, order=sorted(data['Arm Speed'].unique()))
+    sns.countplot(x='Arm Speed', data=data, order=sorted(data['Arm Speed'].unique()), stat="proportion")
     plt.title('Frequency of Arm Speeds Across the Entire Dataset')
     plt.xlabel('Arm Speed')
     plt.ylabel('Frequency')
@@ -58,7 +58,13 @@ def main():
 
     # Step 3: Plot frequency of 'Arm Speed' broken down by 'Target Label'
     plt.figure(figsize=(12, 6))
-    sns.countplot(x='Arm Speed', hue='Target Label', data=data, order=sorted(data['Arm Speed'].unique()))
+    sns.countplot(
+        x="Arm Speed",
+        hue="Target Label",
+        data=data,
+        order=sorted(data["Arm Speed"].unique()),
+        stat="proportion",
+    )
     plt.title('Frequency of Arm Speeds by Target Label')
     plt.xlabel('Arm Speed')
     plt.ylabel('Frequency')
@@ -69,7 +75,7 @@ def main():
 
     # Step 4: Analyze how 'Entropy' changes over the 5 attempts across the entire dataset
     plt.figure(figsize=(12, 6))
-    sns.lineplot(x='Attempt', y='Entropy', data=data, estimator='mean', ci='sd')
+    sns.lineplot(x="Attempt", y="Entropy", data=data, estimator="mean", errorbar="sd")
     plt.title('Entropy Across Attempts (1-5) in Entire Dataset')
     plt.xlabel('Attempt')
     plt.ylabel('Entropy')
@@ -79,7 +85,14 @@ def main():
 
     # Step 5: Analyze how 'Entropy' changes over the 5 attempts for each 'Target Label'
     plt.figure(figsize=(12, 6))
-    sns.lineplot(x='Attempt', y='Entropy', hue='Target Label', data=data, estimator='mean', ci='sd')
+    sns.lineplot(
+        x="Attempt",
+        y="Entropy",
+        hue="Target Label",
+        data=data,
+        estimator="mean",
+        errorbar="sd",
+    )
     plt.title('Entropy Across Attempts by Target Label')
     plt.xlabel('Attempt')
     plt.ylabel('Entropy')
@@ -99,7 +112,9 @@ def main():
     # Step 6: Analyze how each of the 5 attempts affects other metrics (e.g., 'Confidence', 'Total Spikes')
     # Example for 'Confidence' across attempts
     plt.figure(figsize=(12, 6))
-    sns.lineplot(x='Attempt', y='Confidence', data=data, estimator='mean', ci='sd')
+    sns.lineplot(
+        x="Attempt", y="Confidence", data=data, estimator="mean", errorbar="sd"
+    )
     plt.title('Confidence Across Attempts (1-5) in Entire Dataset')
     plt.xlabel('Attempt')
     plt.ylabel('Confidence')
@@ -109,7 +124,14 @@ def main():
 
     # Analyze 'Confidence' across attempts by 'Target Label'
     plt.figure(figsize=(12, 6))
-    sns.lineplot(x='Attempt', y='Confidence', hue='Target Label', data=data, estimator='mean', ci='sd')
+    sns.lineplot(
+        x="Attempt",
+        y="Confidence",
+        hue="Target Label",
+        data=data,
+        estimator="mean",
+        errorbar="sd",
+    )
     plt.title('Confidence Across Attempts by Target Label')
     plt.xlabel('Attempt')
     plt.ylabel('Confidence')
