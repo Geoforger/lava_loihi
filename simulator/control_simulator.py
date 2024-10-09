@@ -5,13 +5,11 @@ from scipy.stats import entropy
 from simulator_dataloader import SimulatorDataset
 from lava.lib.dl import netx
 import lava.lib.dl.slayer as slayer
-from lava.proc import embedded_io as eio
 from lava.magma.core.run_conditions import RunSteps
 from lava.magma.core.run_configs import Loihi2HwCfg, Loihi2SimCfg
 from lava.proc.io.source import RingBuffer as InBuffer
 from lava.proc.io.sink import RingBuffer as OutBuffer
-# from lava.magma.compiler.subcompilers.nc.ncproc_compiler import CompilerOptions
-# CompilerOptions.verbose = True
+
 import sys
 sys.path.append("..")
 from utils.utils import nums_from_string
@@ -42,6 +40,11 @@ class ControlSimulator():
         self.dataset = SimulatorDataset(
             dataset_path, label=sim_label, sampling_time=1
         )
+        
+        if self.loihi:
+            from lava.proc import embedded_io as eio
+            from lava.magma.compiler.subcompilers.nc.ncproc_compiler import CompilerOptions
+            CompilerOptions.verbose = True
 
         self.speed, self.lookup_table = self.find_starting_speed(lookup_path)
 
@@ -150,13 +153,13 @@ class ControlSimulator():
         decision = np.argmax(self.sim_output, axis=0)
         highest_spikes = np.max(self.sim_output, axis=0)
         confidence = highest_spikes / total_spikes
-        entropy = self.__calculate_entropy(highest_spikes)
+        entropy = self.__calculate_entropy()
 
         # Append test values to dataframe
         inp = {
             "Filename": np.repeat(self.filename, self.sample_length),
             "Arm Speed": np.repeat(self.speed, self.sample_length),
-            "Target Label": np.repeat(self.sim_labelm, self.sample_length),
+            "Target Label": np.repeat(self.sim_label, self.sample_length),
             "Decision": decision,
             "Confidence": confidence,
             "Entropy": entropy,
@@ -219,10 +222,10 @@ def main():
         loihi = False,
         sim_label = 0,
         timeout = 5,
-        lookup_path = "",
-        network_path = "",
-        dataset_path = "",
-        output_path = "",
+        lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy",
+        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/best_arm_network/network.net",
+        dataset_path = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_preproc_downsampled/",
+        output_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/",
     )
 
     #################
