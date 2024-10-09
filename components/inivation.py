@@ -45,11 +45,13 @@ class InivationCamera(AbstractProcess):
                 filename: str = None,
                 flatten: bool = False,
                 crop_params:list = None,
+                arm_connected:bool=False
             ) -> None:
 
         self.filename = filename
         self.flatten = flatten
         self.__assert_correct_crop_params(crop_params)
+        self.arm_connected = arm_connected
 
         # Setup camera from definition or discover from connected cameras
         if camera_type is None:
@@ -95,6 +97,7 @@ class InivationCamera(AbstractProcess):
             noise_filter=self.noise_filter,
             flatten=self.flatten,
             crop_params=self.crop_params,
+            arm_connected=self.arm_connected
         )
 
     def __assert_camera_available(self, camera_type) -> None:
@@ -199,9 +202,14 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.noise_filter = proc_params["noise_filter"]
         self.flatten = proc_params["flatten"]
         self.crop_params = proc_params["crop_params"]
+        self.arm_connected = proc_params["arm_connected"]
 
         self.start_time = None
-        self.arm_moving = False
+        # Change bool to True if using without the arm
+        if self.arm_connected:
+            self.arm_moving = False
+        else:
+            self.arm_moving = True
 
         self.reader = CameraThread(
             camera_type = self.camera_type,
@@ -238,7 +246,10 @@ class PySparseInivationCameraModel(PyLoihiProcessModel):
         self.s_out.send(data, indices)
 
     def post_guard(self):
-        return True
+        if self.arm_connected:
+            return True
+        else:
+            return False
 
     def run_post_mgmt(self):
         self.arm_moving = self.moving_in.read()
