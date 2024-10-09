@@ -17,13 +17,13 @@ from utils.utils import nums_from_string
 class ControlSimulator():
     def __init__(
         self,
+        lookup_path,
+        network_path,
+        dataset_path,
+        output_path,
+        sim_label,        
         loihi=False,
-        sim_label=0,
         timeout=5,
-        lookup_path="",
-        network_path="",
-        dataset_path="",
-        output_path="",
         speeds=[15, 25, 35, 45, 55],
         sample_length = 1000,
     ) -> None:
@@ -46,21 +46,8 @@ class ControlSimulator():
             from lava.magma.compiler.subcompilers.nc.ncproc_compiler import CompilerOptions
             CompilerOptions.verbose = True
 
-        self.speed, self.lookup_table = self.find_starting_speed(lookup_path)
-
-        # Create output dataframe for logging
-        self.data = pd.DataFrame(
-            columns=[
-                "Filename",
-                "Arm Speed",
-                "Target Label",
-                "Decision",
-                "Confidence",
-                "Entropy",
-                "Total Spikes",
-                "Attempt",
-            ]
-        )
+        start_speed, self.lookup_table = self.find_starting_speed(lookup_path)
+        self.attempt_speeds = [start_speed]
 
         # Find the number of files in the output dir
         self.test_num = len(
@@ -69,8 +56,9 @@ class ControlSimulator():
 
         # Init values used in sim
         self.sim_output = None
-        self.accumulator = None
-        self.filename = None
+        self.all_test_data = np.empty((10, self.timeout*self.sample_length))
+        self.acc = None
+        self.filenames = []
         self.current_attempt = 1
 
     def find_starting_speed(self, lookup_path) -> tuple:
@@ -87,25 +75,12 @@ class ControlSimulator():
         """
         Method to use the lookup table to find the new exploratory speed for the robot
         """
-        arg_sort = np.argsort(self.accumulator)
+        arg_sort = np.argsort(self.acc[:, -1])
         highest = arg_sort[-1]
         second = arg_sort[-2]
 
-        # # Check not out of bounds
-        # if highest > lookup_table.shape[0]:
-        #     if second != 9:
-        #         highest = second + 1
-        #     elif second != 0:
-        #         highest = second - 1
-
-        # if second > lookup_table.shape[0]:
-        #     if highest != 9:
-        #         second = highest + 1
-        #     elif highest != 0:
-        #         second = highest - 1
-
         speed_idx = np.argmax(self.lookup_table[highest, second, :])
-        self.speed = self.speeds[speed_idx]
+        self.attempt_speeds.append(self.speeds[speed_idx])
 
     def test_with_netx(self) -> None:
         """
@@ -114,7 +89,8 @@ class ControlSimulator():
         net = netx.hdf5.Network(net_config=self.network_path)
         run_condition = RunSteps(num_steps=self.sample_length)
 
-        inp, self.filename = self.dataset.__getitem__(speed=self.speed)
+        inp, f = self.dataset.__getitem__(speed=self.attempt_speeds[-1])
+        self.filenames.append(f)
         input_data = inp.squeeze()
 
         input_buffer = InBuffer(data=input_data.numpy())
@@ -142,61 +118,62 @@ class ControlSimulator():
 
         # Maintain sim values for use in logger
         self.sim_output = out
-        self.accumulator = np.sum(out, axis=1)
 
     def log_sim(self, attempt) -> None:
         """
         Method to take the output from the simulation and log it into a csv
         """
-        # Calculate metrics per ts from sim output
-        total_spikes = np.sum(self.sim_output, axis=0)
-        decision = np.argmax(self.sim_output, axis=0)
-        highest_spikes = np.max(self.sim_output, axis=0)
-        confidence = highest_spikes / total_spikes
-        entropy = self.__calculate_entropy()
-
-        # Append test values to dataframe
-        inp = {
-            "Filename": np.repeat(self.filename, self.sample_length),
-            "Arm Speed": np.repeat(self.speed, self.sample_length),
-            "Target Label": np.repeat(self.sim_label, self.sample_length),
-            "Decision": decision,
-            "Confidence": confidence,
-            "Entropy": entropy,
-            "Total Spikes": total_spikes,
-            "Attempt": np.repeat(attempt, self.sample_length),
-        }
-
-        self.data = pd.concat(
-            [self.data, pd.DataFrame(inp)], ignore_index=True
-        )
-
-        # Save dataframe to csv at end of testing
+        # Add this sample output to the accumulator
+        self.all_test_data[:, (self.current_attempt-1)*self.sample_length:self.current_attempt*self.sample_length] = self.sim_output
+        self.acc = np.cumsum(self.all_test_data[:, :self.current_attempt*self.sample_length], axis=1)
+        
         if self.current_attempt == self.timeout:
-            self.data.to_csv(
+            self.acc = np.cumsum(self.all_test_data, axis=1)
+            total_spikes = np.sum(self.acc, axis=0)
+            decision = np.argmax(self.acc, axis=0)
+            highest_spikes = np.max(self.acc, axis=0)
+            confidence = highest_spikes / total_spikes
+            entropy = self.__calculate_entropy(total_spikes)
+            
+            # Meta params for each attempt
+            # NOTE: These need reiterating at each timestep in output data
+            f = [n for name in self.filenames for n in np.repeat(name, self.sample_length)]
+            s = [sp for speed in self.attempt_speeds for sp in np.repeat(speed, self.sample_length)]
+            a = [at+1 for att in range(self.timeout) for at in np.repeat(att, self.sample_length)]
+            
+            # Create output dataframe
+            inp = {
+                "Filename": f,
+                "Arm Speed": s,
+                "Target Label": np.repeat(self.sim_label, self.sample_length*self.timeout),
+                "Decision": decision,
+                "Confidence": confidence,
+                "Entropy": entropy,
+                "Total Spikes": total_spikes,
+                "Attempt": a,
+            }
+            save_data = pd.DataFrame(data=inp)
+            
+            # Save dataframe to csv at end of testing
+            print("Saving data...")
+            save_data.to_csv(
                 f"{self.output_path}/{self.sim_label}-iteration-{self.test_num}.csv"
             )
         else:
             self.current_attempt += 1
 
-    def __calculate_entropy(self) -> float:
+    def __calculate_entropy(self, total_spikes) -> float:
         """
         Private method to calculate entropy at each time step
         """
-        entropy_values = np.zeros(self.sample_length, dtype=float)
-
-        # Cumulative sum of spikes over time for each neuron
-        cumulative_spikes = np.cumsum(self.sim_output, axis=1)
-
-        # Cumulative total spikes across all neurons at each time step
-        total_spikes = cumulative_spikes.sum(axis=0)
+        entropy_values = np.zeros(self.sample_length * self.timeout, dtype=float)
 
         # Small constant to avoid division by zero
         epsilon = 1e-12
 
-        for ts in range(self.sample_length):
+        for ts in range(self.sample_length * self.timeout):
             # Spike rates up to current time step for each neuron
-            spike_rates = cumulative_spikes[:, ts]
+            spike_rates = self.acc[:, ts]
 
             # Normalize to get probabilities
             total = total_spikes[ts] + epsilon  # Avoid division by zero
@@ -223,7 +200,7 @@ def main():
         sim_label = 0,
         timeout = 5,
         lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy",
-        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/best_arm_network/network.net",
+        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/arm_test_nonorm_1728457055/network.net",
         dataset_path = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_preproc_downsampled/",
         output_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/",
     )
