@@ -102,14 +102,14 @@ def calculate_pooling_dim(input_dim, kernel_dim, stride, order):
     """
     return int(((input_dim - kernel_dim) / stride) + (1 * order))
 
-def dataset_split(PATH, train_ratio=0.8):
+def dataset_split(PATH, train_ratio=0.6, valid_ratio=None):
     """ Function to split a given directory of data into a training and test split after seperating data for validation
 
     Args:
         PATH (str): Path to the data directory 
         train_ratio (float, optional): Ratio of training to testing data. Defaults to 0.8.
     """
-    filenames = glob.glob(f"{PATH}/*.npy")
+    filenames = glob.glob(f"{PATH}/*on.pickle.npy")
     
     if os.path.exists(f"{PATH}/train/") and os.path.exists(f"{PATH}/test/"):
         if (input(f"Train & Test directories exist on dataset path {PATH}. Overwrite? This WILL overwrite both directories (y,N)") != "y"):
@@ -120,7 +120,20 @@ def dataset_split(PATH, train_ratio=0.8):
     os.makedirs(f"{PATH}/test/", exist_ok=False)
         
     # Create the train/test/split
-    train, test = train_test_split(filenames, train_size=train_ratio, test_size=1-train_ratio) 
+    train, test = train_test_split(filenames, train_size=train_ratio, test_size=1-train_ratio)
+    
+    if valid_ratio is not None:
+        assert(type(valid_ratio) is float)
+        os.makedirs(f"{PATH}/valid/", exist_ok=False)
+        
+        # Calculate valid ration of the remaining training data
+        test_valid = 1.0 - train_ratio
+        val_ratio = valid_ratio / test_valid
+        test, valid = train_test_split(test, train_size=val_ratio, test_size=val_ratio)
+        
+        for f in valid:
+            f_s = f.split("/")[-1]
+            shutil.copy(f, f"{PATH}/valid/{f_s}")
 
     # Copy files into folders
     for f in train:

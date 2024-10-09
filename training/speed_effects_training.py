@@ -11,6 +11,7 @@ import time
 import pandas as pd
 from ast import literal_eval
 import numpy as np
+from sklearn.metrics import accuracy_score
 
 # Import the data processing class and data collection class
 from force_speed_dataset import ForceSpeedDataset
@@ -212,17 +213,6 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
             print("Testing...")
         for _, (input, label, speed, force) in enumerate(test_loader):
             output = assistant.test(input, label)
-            if epoch == num_epochs - 1:
-                for l in range(len(slayer.classifier.Rate.predict(output))):
-                    testing_labels.append(int(label[l].cpu()))
-                    testing_preds.append(int(
-                        slayer.classifier.Rate.predict(output)[l].cpu()
-                    ))
-                    speed_labels.append(int(speed[l]))
-                    depth_labels.append(float(force[l]))
-
-                    # Save output spikes
-                    # np.save(f"{OUTPUT_PATH}/spikes/{filename[l]}", output[l].cpu())
         
         dist.barrier()  # Wait for all ranks to finish epoch
         
@@ -247,6 +237,31 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
         net.module.load_state_dict(torch.load(f"{OUTPUT_PATH}/network.pt"))
         net.module.export_hdf5(f"{OUTPUT_PATH}/network.net")
     print("Finished training")
+    
+    # Perform validation loop
+    validation_set = ForceSpeedDataset(
+        DATASET_PATH,
+        train=False,
+        valid=True
+    )
+
+    val_loader = prepare(validation_set, rank, world_size, batch_size=batch_size, num_workers=0)
+    
+    if rank == 0:
+        print("Performing validation...")
+    for _, (input, label, speed, force) in enumerate(val_loader):
+        output = assistant.test(input, label)
+        for l in range(len(slayer.classifier.Rate.predict(output))):
+            testing_labels.append(int(label[l].cpu()))
+            testing_preds.append(int(
+                slayer.classifier.Rate.predict(output)[l].cpu()
+            ))
+            speed_labels.append(int(speed[l]))
+            depth_labels.append(float(force[l]))
+
+            # Save output spikes
+            # np.save(f"{OUTPUT_PATH}/spikes/{filename[l]}", output[l].cpu())
+    print(f"Validation accuracy: {accuracy_score(testing_labels, testing_preds)}")
 
     # Save output stats for testing
     test_stats = pd.DataFrame(data={
@@ -264,11 +279,12 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
 
 def main():
     DATASET_PATH = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_preproc_downsampled/"
-    train_ratio = 0.8
+    train_ratio = 0.6
+    valid_ratio = 0.2
     
     # Train test split
     print(f"Splitting dataset into train/test with ratio: {train_ratio}")
-    dataset_split(DATASET_PATH, train_ratio=train_ratio)
+    dataset_split(DATASET_PATH, train_ratio=train_ratio, valid_ratio=valid_ratio)
     
     world_size = 3
     
