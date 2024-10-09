@@ -26,11 +26,9 @@ class ThresholdPooling(AbstractProcess):
         self.threshold = threshold
         self.off_events = off_events
 
-        self.pooling_indices = self.__create_pooling_indices()
+        self.out_shape, self.pooling_indices = self.__create_pooling_indices()
         self.num_windows = len(self.pooling_indices)
         self.num_x = (self.in_shape[1] - self.kernel[1]) // self.stride[1] + 1
-
-        self.out_shape = self.__calculate_output_shape()
 
         self.a_in = InPort(shape=self.in_shape)
         self.s_out = OutPort(shape=self.out_shape)
@@ -53,8 +51,8 @@ class ThresholdPooling(AbstractProcess):
         s_cols, s_rows = self.stride
 
         # Calculate the number of windows in each dimension
-        num_windows_x = (cols - k_cols) // s_cols + 1
-        num_windows_y = (rows - k_rows) // s_rows + 1
+        num_windows_x = round((cols - k_cols) / s_cols + 1)
+        num_windows_y = round((rows - k_rows) / s_rows + 1)
 
         # List of top-left indices of each pooling window
         window_indices = []
@@ -62,19 +60,19 @@ class ThresholdPooling(AbstractProcess):
             for x in range(num_windows_x):
                 window_indices.append((x * s_cols, y * s_rows))
 
-        return window_indices
+        return (num_windows_x, num_windows_y), window_indices
 
-    def __calculate_output_shape(self):
-        x_dim = int(((self.in_shape[0] - self.kernel[0]) / self.stride[0]) + 1)
-        y_dim = int(((self.in_shape[1] - self.kernel[1]) / self.stride[1]) + 1)
-
-        return (x_dim, y_dim)
+    # def __calculate_output_shape(self):
+    #     x_dim = int(((self.in_shape[0] - self.kernel[0]) / self.stride[0]) + 1)
+    #     y_dim = int(((self.in_shape[1] - self.kernel[1]) / self.stride[1]) + 1)
+    #     print((x_dim, y_dim))
+    #     return (x_dim, y_dim)
 
 
 @implements(proc=ThresholdPooling, protocol=LoihiProtocol)
 @requires(CPU)
 class PyThresholdPoolingModel(PyLoihiProcessModel):
-    a_in: PyInPort = LavaPyType(PyInPort.VEC_SPARSE, np.float64)
+    a_in: PyInPort = LavaPyType(PyInPort.VEC_SPARSE, int)
     s_out: PyOutPort = LavaPyType(PyOutPort.VEC_SPARSE, int)
 
     def __init__(self, proc_params) -> None:

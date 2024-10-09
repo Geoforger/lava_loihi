@@ -18,7 +18,7 @@ class ABBController(AbstractProcess):
         self,
         net_out_shape: tuple,
         lookup_path: str,
-        textures: dict,
+        forces: np.ndarray,
         speeds: np.ndarray,
         abb_params: dict,
         target_texture: dict,
@@ -29,7 +29,7 @@ class ABBController(AbstractProcess):
 
         self.net_out_shape = net_out_shape
         self.lookup_path = lookup_path
-        self.textures = textures
+        self.forces = forces
         self.speeds = speeds
         self.target_texture = target_texture
         self.abb_service = abb_service
@@ -39,7 +39,6 @@ class ABBController(AbstractProcess):
         self.base_frame = abb_params["base_frame"]
         self.home_pose = abb_params["home_pose"]
         self.work_frame = abb_params["work_frame"]
-        self.tap_depth = abb_params["tap_depth"]
         self.tap_length = abb_params["tap_length"]
 
         self.acc_in = RefPort(self.net_out_shape)
@@ -53,19 +52,18 @@ class ABBController(AbstractProcess):
         self.slide_speed = Var(shape=(1,), init=self.speeds[speed_idx])
 
         # Currently choose 0 or 1 of two different poses
-        self.texture_position = [[0, 0, 0, 0, 0, 0], [102, 0, 0, 0, 0, 0]][tex_index]
+        self.texture_position = [[0, 0, 0, 0, 0, 0], [97, 0, 0, 0, 0, 0]][tex_index]
 
         super().__init__(
             net_out_shape=self.net_out_shape,
             lookup_path=self.lookup_path,
-            textures=self.textures,
+            forces=self.forces,
             speeds=self.speeds,
             texture_position=self.texture_position,
             robot_tcp=self.robot_tcp,
             base_frame=self.base_frame,
             home_pose=self.home_pose,
             work_frame=self.work_frame,
-            tap_depth=self.tap_depth,
             tap_length=self.tap_length,
             abb_service=self.abb_service,
             target_texture=self.target_texture,
@@ -86,7 +84,7 @@ class PyABBController(PyLoihiProcessModel):
     def __init__(self, proc_params) -> None:
         super().__init__(proc_params)
         self.lookup_path = proc_params["lookup_path"]
-        self.textures = proc_params["textures"]
+        self.forces = proc_params["forces"]
         self.speeds = proc_params["speeds"]
         self.target_texture = proc_params["target_texture"]
         self.net_out_shape = proc_params["net_out_shape"]
@@ -97,7 +95,6 @@ class PyABBController(PyLoihiProcessModel):
         self.base_frame = proc_params["base_frame"]
         self.home_pose = proc_params["home_pose"]
         self.work_frame = proc_params["work_frame"]
-        self.tap_depth = proc_params["tap_depth"]
         self.tap_length = proc_params["tap_length"]
         self.abb_service = proc_params["abb_service"]
 
@@ -106,10 +103,10 @@ class PyABBController(PyLoihiProcessModel):
 
         # Pose and tap movements for target texture
         texture_x = self.texture_position[0]
-        contact_z = self.work_frame[2] - self.textures[self.target_texture]
+        contact_z = self.work_frame[2] - self.forces[self.target_texture]
         self.tap_moves = (
-            [texture_x, 0, contact_z + self.tap_depth, 0, 0, 0],
-            [texture_x, self.tap_length, contact_z + self.tap_depth, 0, 0, 0],
+            [texture_x, 0, contact_z, 0, 0, 0],
+            [texture_x, self.tap_length, contact_z, 0, 0, 0],
             [texture_x, self.tap_length, 0, 0, 0, 0],
         )
 
