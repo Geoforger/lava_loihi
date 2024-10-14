@@ -195,12 +195,14 @@ def main():
     #################
     # Simulator hyperparams
     #################
+    target_label = int(sys.stdin.read().strip())
+
     sim = ControlSimulator(
         loihi = False,
-        sim_label = 0,
+        sim_label = target_label,
         timeout = 5,
         lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy",
-        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/arm_test_nonorm_1728457055/network.net",
+        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/arm_test_nonorm_1728559746/network.net",
         dataset_path = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_preproc_downsampled/",
         output_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/",
     )

@@ -6,8 +6,8 @@ import os
 import re
 
 def main():
-    # Step 1: Read and combine all CSV files
-    csv_folder_path = "/media/farscope2/My Passport/George/Test/simulator_tests/"  # Replace with your actual path
+    save_path = "/home/george/Documents/lava_loihi/plots/"
+    csv_folder_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/"  # Replace with your actual path
     csv_files = glob.glob(f"{csv_folder_path}*.csv")
 
     if f"{csv_folder_path}combined_frame.csv" not in csv_files:
@@ -54,7 +54,8 @@ def main():
     plt.ylabel('Frequency')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"{save_path}/arm_speeds.png", dpi=300)
+    #plt.show()
 
     # Step 3: Plot frequency of 'Arm Speed' broken down by 'Target Label'
     plt.figure(figsize=(12, 6))
@@ -71,7 +72,8 @@ def main():
     plt.legend(title='Target Label', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"{save_path}/arm_speeds_label.png", dpi=300)
+    #plt.show()
 
     # Step 4: Analyze how 'Entropy' changes over the 5 attempts across the entire dataset
     plt.figure(figsize=(12, 6))
@@ -81,7 +83,8 @@ def main():
     plt.ylabel('Entropy')
     plt.xticks([1, 2, 3, 4, 5])
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"{save_path}/entropy.png", dpi=300)
+    #plt.show()
 
     # Step 5: Analyze how 'Entropy' changes over the 5 attempts for each 'Target Label'
     plt.figure(figsize=(12, 6))
@@ -99,7 +102,8 @@ def main():
     plt.legend(title='Target Label', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks([1, 2, 3, 4, 5])
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"{save_path}/entropy_per_label.png", dpi=300)
+    #plt.show()
 
     # Alternatively, use FacetGrid to create separate plots for each 'Target Label'
     g = sns.FacetGrid(data, col='Target Label', col_wrap=5, height=4)
@@ -107,7 +111,7 @@ def main():
     g.set_axis_labels('Attempt', 'Entropy')
     g.set_titles('Target Label: {col_name}')
     plt.tight_layout()
-    plt.show()
+    #plt.show()
 
     # Step 6: Analyze how each of the 5 attempts affects other metrics (e.g., 'Confidence', 'Total Spikes')
     # Example for 'Confidence' across attempts
@@ -120,7 +124,8 @@ def main():
     plt.ylabel('Confidence')
     plt.xticks([1, 2, 3, 4, 5])
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"{save_path}/confidence.png", dpi=300)
+    #plt.show()
 
     # Analyze 'Confidence' across attempts by 'Target Label'
     plt.figure(figsize=(12, 6))
@@ -138,7 +143,8 @@ def main():
     plt.legend(title='Target Label', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks([1, 2, 3, 4, 5])
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"{save_path}/confidence_by_label.png", dpi=300)
+    #plt.show()
 
 
 if __name__ == "__main__":
