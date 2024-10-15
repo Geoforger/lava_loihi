@@ -17,6 +17,7 @@ from utils.utils import nums_from_string
 class ControlSimulator():
     def __init__(
         self,
+        mode,
         lookup_path,
         network_path,
         dataset_path,
@@ -29,6 +30,7 @@ class ControlSimulator():
     ) -> None:
 
         # Init hyperparams
+        self.mode = mode
         self.loihi = loihi
         self.sim_label = sim_label
         self.timeout = timeout
@@ -51,7 +53,7 @@ class ControlSimulator():
 
         # Find the number of files in the output dir
         self.test_num = len(
-            glob.glob(f"{self.output_path}/{self.sim_label}-iteration-*.csv")
+            glob.glob(f"{self.output_path}/{self.mode}-{self.sim_label}-iteration-*.csv")
         )
 
         # Init values used in sim
@@ -81,6 +83,10 @@ class ControlSimulator():
 
         speed_idx = np.argmax(self.lookup_table[highest, second, :])
         self.attempt_speeds.append(self.speeds[speed_idx])
+
+    def rand_change(self) -> None:
+        speed = np.random.choice(self.speeds)
+        self.attempt_speeds.append(speed)
 
     def test_with_netx(self) -> None:
         """
@@ -143,6 +149,7 @@ class ControlSimulator():
             
             # Create output dataframe
             inp = {
+                "Mode": self.mode,
                 "Filename": f,
                 "Arm Speed": s,
                 "Target Label": np.repeat(self.sim_label, self.sample_length*self.timeout),
@@ -157,7 +164,7 @@ class ControlSimulator():
             # Save dataframe to csv at end of testing
             print("Saving data...")
             save_data.to_csv(
-                f"{self.output_path}/{self.sim_label}-iteration-{self.test_num}.csv"
+                f"{self.output_path}/{self.mode}-{self.sim_label}-iteration-{self.test_num}.csv"
             )
         else:
             self.current_attempt += 1
@@ -189,18 +196,32 @@ class ControlSimulator():
         for attempt in range(self.timeout):
             self.test_with_netx()
             self.log_sim(attempt)
-            self.state_change()
+            
+            # If random mode select a random speed to switch to
+            if self.mode == "r":
+                self.rand_change()
+            # If test mode implement the correct switch
+            elif self.mode == "t":
+                self.state_change()
+            # Else keep using the starting speed
 
 def main():
     #################
     # Simulator hyperparams
     #################
+    mode = sys.stdin.readline().strip()
+    target_label = int(sys.stdin.readline().strip())
+    
+    print(f"Mode: {mode}")
+    print(f"Label: {target_label}")
+
     sim = ControlSimulator(
+        mode = mode,
         loihi = False,
-        sim_label = 0,
+        sim_label = target_label,
         timeout = 5,
         lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy",
-        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/arm_test_nonorm_1728457055/network.net",
+        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/arm_test_nonorm_1728559746/network.net",
         dataset_path = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_preproc_downsampled/",
         output_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/",
     )
