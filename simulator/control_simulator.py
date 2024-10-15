@@ -53,7 +53,7 @@ class ControlSimulator():
 
         # Find the number of files in the output dir
         self.test_num = len(
-            glob.glob(f"{self.output_path}/{self.sim_label}-iteration-*.csv")
+            glob.glob(f"{self.output_path}/{self.mode}-{self.sim_label}-iteration-*.csv")
         )
 
         # Init values used in sim
@@ -164,7 +164,7 @@ class ControlSimulator():
             # Save dataframe to csv at end of testing
             print("Saving data...")
             save_data.to_csv(
-                f"{self.output_path}/{self.sim_label}-iteration-{self.test_num}.csv"
+                f"{self.output_path}/{self.mode}-{self.sim_label}-iteration-{self.test_num}.csv"
             )
         else:
             self.current_attempt += 1
