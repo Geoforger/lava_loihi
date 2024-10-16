@@ -203,7 +203,9 @@ class ControlSimulator():
             # If test mode implement the correct switch
             elif self.mode == "t":
                 self.state_change()
-            # Else keep using the starting speed
+            # Else keep using the starting speed and append to list again
+            elif self.mode == "b":
+                self.attempt_speeds.append(self.attempt_speeds[-1])
 
 def main():
     #################
@@ -211,9 +213,6 @@ def main():
     #################
     mode = sys.stdin.readline().strip()
     target_label = int(sys.stdin.readline().strip())
-    
-    print(f"Mode: {mode}")
-    print(f"Label: {target_label}")
 
     sim = ControlSimulator(
         mode = mode,
