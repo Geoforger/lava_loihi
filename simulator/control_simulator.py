@@ -26,7 +26,7 @@ class ControlSimulator():
         loihi=False,
         timeout=5,
         speeds=[15, 25, 35, 45, 55],
-        sample_length = 1000,
+        sample_length = 200,
     ) -> None:
 
         # Init hyperparams
@@ -48,7 +48,8 @@ class ControlSimulator():
             from lava.magma.compiler.subcompilers.nc.ncproc_compiler import CompilerOptions
             CompilerOptions.verbose = True
 
-        start_speed, self.lookup_table = self.find_starting_speed(lookup_path)
+        # start_speed, self.lookup_table = self.find_starting_speed(lookup_path)
+        start_speed, self.lookup_table = self.random_start_speed(lookup_path)
         self.attempt_speeds = [start_speed]
 
         # Find the number of files in the output dir
@@ -72,6 +73,13 @@ class ControlSimulator():
         speed_idx = np.argmax(mean_dist)
 
         return self.speeds[speed_idx], lookup_table
+
+    def random_start_speed(self, lookup_path) -> tuple:
+        """
+        Method to return lookup table and a random starting speed
+        """
+        lookup_table = np.load(lookup_path)
+        return np.random.choice(self.speeds), lookup_table
 
     def state_change(self) -> None:
         """
@@ -125,7 +133,7 @@ class ControlSimulator():
         # Maintain sim values for use in logger
         self.sim_output = out
 
-    def log_sim(self, attempt) -> None:
+    def log_sim(self) -> None:
         """
         Method to take the output from the simulation and log it into a csv
         """
@@ -140,6 +148,7 @@ class ControlSimulator():
             highest_spikes = np.max(self.acc, axis=0)
             confidence = highest_spikes / total_spikes
             entropy = self.__calculate_entropy(total_spikes)
+            # entropy = self.__calculate_moving_window_entropy(self.acc)
             
             # Meta params for each attempt
             # NOTE: These need reiterating at each timestep in output data
@@ -192,10 +201,63 @@ class ControlSimulator():
 
         return entropy_values
 
+    def __calculate_moving_window_entropy(
+        self, cumulative_data, window_size=10, pseudocount=1e-6, spike_threshold=10
+
+    ):
+        """
+        Calculate entropy at each time step using cumulative spike counts.
+
+        Parameters:
+        - cumulative_data: 2D numpy array of shape (n_neurons, n_time_steps)
+                        Cumulative sum of spikes for each neuron up to each time step.
+        - pseudocount: Small float added to spike counts to prevent zero probabilities.
+        - spike_threshold: Minimum total cumulative spike count to compute entropy.
+                        If the total spikes are below this threshold, entropy is set to NaN.
+
+        Returns:
+        - entropy_over_time: 1D numpy array of entropy values over time.
+                            Length is n_time_steps.
+        """
+        n_neurons, n_time_steps = cumulative_data.shape
+
+        # Initialize array to hold entropy values
+        entropy_over_time = np.full(n_time_steps, np.nan)
+
+        for ts in range(n_time_steps):
+            # Determine the start index of the window
+            start_idx = max(0, ts - window_size + 1)
+            end_idx = ts
+
+            # Calculate spikes within the window for each neuron
+            if start_idx == 0:
+                window_spike_counts = cumulative_data[:, end_idx]
+            else:
+                window_spike_counts = cumulative_data[:, end_idx] - cumulative_data[:, start_idx - 1]
+
+            # Add pseudocount to avoid zero probabilities
+            spike_counts = window_spike_counts + pseudocount
+
+            # Total spikes in the window
+            total_spikes = spike_counts.sum()
+
+            if total_spikes - pseudocount * n_neurons < spike_threshold:
+                # Not enough spikes to compute entropy reliably
+                entropy_over_time[ts] = np.nan
+            else:
+                # Normalize to get probabilities
+                probabilities = spike_counts / total_spikes
+
+                # Compute entropy using scipy's entropy function
+                entropy_value = entropy(probabilities, base=2)
+                entropy_over_time[ts] = entropy_value
+
+        return entropy_over_time
+
     def run_simulation(self):
-        for attempt in range(self.timeout):
+        for _ in range(self.timeout):
             self.test_with_netx()
-            self.log_sim(attempt)
+            self.log_sim()
             
             # If random mode select a random speed to switch to
             if self.mode == "r":
@@ -218,10 +280,10 @@ def main():
         mode = mode,
         loihi = False,
         sim_label = target_label,
-        timeout = 5,
+        timeout = 3,
         lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy",
-        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/arm_test_nonorm_1728559746/network.net",
-        dataset_path = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_preproc_downsampled/",
+        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/spike_max_arm_test_1729171142/network.net",
+        dataset_path = "/media/george/T7 Shield/Neuromorphic Data/George/simulator_testing/",
         output_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/",
     )
 

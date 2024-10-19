@@ -38,6 +38,8 @@ class SimulatorDataset(Dataset):
         valid_samples = [s for s in self.samples if nums_from_string(s)[-3] == speed]
         # {force} - {speed} - {label_idx} - {trial_idx}
         random.seed(time.time())
+        if not valid_samples:
+            raise ValueError(f"No valid samples found for speed: {speed}")
         filename = random.choice(valid_samples) # Grab random sample from the dataset
 
         event = DataProcessor.load_data_np(filename)
