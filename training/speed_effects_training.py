@@ -114,7 +114,7 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
     # Output params
     #############################
     start_time = int(time.time())
-    OUTPUT_PATH = f"/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/arm_test_nonorm_{start_time}/"
+    OUTPUT_PATH = f"/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/spike_max_arm_test_{start_time}/"
     if rank == 0:
         os.makedirs(OUTPUT_PATH, exist_ok=False)
         # os.makedirs(OUTPUT_PATH+"spikes/", exist_ok=False)
@@ -127,7 +127,7 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
     #############################
     # Training params
     #############################
-    num_epochs = 25
+    num_epochs = 100
     learning_rate = 0.001   # Starting learning rate
     batch_size = 350
     hidden_layer = 125
@@ -154,8 +154,9 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
 
     # Initialise error module
     # TODO: 1) Play around with different error rates, etc.
-    error = slayer.loss.SpikeRate(
-        true_rate=true_rate, false_rate=0.02, reduction='sum').to(rank)
+    # error = slayer.loss.SpikeRate(
+    #     true_rate=true_rate, false_rate=0.2, reduction='sum').to(rank)
+    error = slayer.loss.SpikeMax(moving_window=10, mode="softmax").to(rank)
 
     # Initialise stats and training assistants
     stats = slayer.utils.LearningStats()
@@ -261,10 +262,12 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
 
             # Save output spikes
             # np.save(f"{OUTPUT_PATH}/spikes/{filename[l]}", output[l].cpu())
-    print(f"Validation accuracy: {accuracy_score(testing_labels, testing_preds)}")
+    val_accuracy = accuracy_score(testing_labels, testing_preds)
+    print(f"Validation accuracy: {val_accuracy}")
 
     # Save output stats for testing
     test_stats = pd.DataFrame(data={
+        "Accuracy": val_accuracy,
         "Labels": testing_labels,
         "Predictions": testing_preds,
         "Speeds": speed_labels,
@@ -278,7 +281,7 @@ def objective(rank, world_size, DATASET_PATH, true_rate):
 
 
 def main():
-    DATASET_PATH = "/media/george/T7 Shield/Neuromorphic Data/George/speed_depth_preproc_downsampled/"
+    DATASET_PATH = "/media/george/T7 Shield/Neuromorphic Data/George/simulator_training/"
     train_ratio = 0.6
     valid_ratio = 0.2
     
@@ -288,7 +291,7 @@ def main():
     
     world_size = 3
     
-    for r in np.arange(0.7, 1.0, 0.1):
+    for r in np.arange(0.9, 1.0, 0.1):
         for _ in range(25):
             mp.spawn(
                 objective,
