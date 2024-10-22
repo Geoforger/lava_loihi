@@ -1,5 +1,5 @@
 #!/bin/bash
-declare -a arr=("r" "t" "b")
+declare -a arr=("v" "b")
 
 # Cycle through modes
 for m in "${arr[@]}"
@@ -10,7 +10,7 @@ do
     do
         echo "Testing Label: $l"
         # Implement all tests using these settings
-        for i in $(seq 1 5)
+        for i in $(seq 1 50)
         do
             echo "Iteration $i - $(date)"
             # Pass both mode and label as input to the python script

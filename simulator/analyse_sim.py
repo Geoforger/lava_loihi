@@ -1,151 +1,200 @@
-#!/bin/bash
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 import glob
 import os
-import re
-import numpy as np
 
-# Step 1: Read and combine all CSV files
-csv_folder_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/"  # Replace with your actual path
-csv_files = glob.glob(os.path.join(csv_folder_path, '*.csv'))
+# Step 1: Read all CSV files
+# Get a list of all CSV files matching the pattern
+results_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/"
+csv_files = glob.glob(f"{results_path}/*-*-iteration-*.csv")
 
-data_frames = []
-num_tests = len(csv_files)
-time_steps = None
+# Initialize an empty list to hold DataFrames
+df_list = []
 
-# Step 2: Initialize accuracy array
-accuracy_array = []
-
+# Step 2: Read and combine all CSV files into a single DataFrame
 for file in csv_files:
     df = pd.read_csv(file)
-    # Extract mode and iteration from the filename
+    # Extract mode, label, and test number from filename if needed
     filename = os.path.basename(file)
-    match = re.match(r'(?P<mode>.*?)-(?P<sim_label>.*?)-iteration-(?P<test_num>\d+)\.csv$', filename)
-    if match:
-        df['Mode'] = match.group('mode')
-        df['Iteration'] = int(match.group('test_num'))
-    # Add a time step column using the index
-    df['Time Step'] = df.index
-    data_frames.append(df)
+    mode, label, _, test_num_csv = filename.split('-')
+    test_num = test_num_csv.split('.')[0]  # Remove '.csv' extension
+    # Add extracted info to DataFrame if necessary
+    df['Mode'] = mode
+    df['Target Label'] = label
+    df['Test Number'] = test_num
+    df_list.append(df)
 
-    # Initialize time_steps if not set
-    if time_steps is None:
-        time_steps = len(df)
+# Combine all DataFrames into one
+data = pd.concat(df_list, ignore_index=True)
 
-    # Calculate accuracy for each time step in the current file
-    accuracy = (df['Target Label'] == df['Decision']).astype(int).to_numpy()
-    accuracy_array.append(accuracy)
+# Step 3: Ensure numeric columns are properly converted to numeric types for aggregation
+numeric_columns = ['Arm Speed', 'Time Step', 'Confidence', 'Entropy', 'Total Spikes', 'Max Spikes', 'Attempt']
+for col in numeric_columns:
+    data[col] = pd.to_numeric(data[col], errors='coerce')
 
-# Convert accuracy array to numpy array
-accuracy_array = np.array(accuracy_array)  # Shape: (num_tests, time_steps)
+# Fill NaN or null values with 0.0
+data = data.fillna(0.0)
 
-# Calculate average accuracy across all tests for each time step
-average_accuracy_over_time = np.mean(accuracy_array, axis=0)
-
-# Combine all data frames into one
-data = pd.concat(data_frames, ignore_index=True)
-
-# Replace infinite values with NaN
-data.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-# Replace all NaN or empty values with 0.0
-data.fillna(0.0, inplace=True)
-
-# Convert data types
+# Ensure 'Target Label' and 'Decision' are of the same datatype for comparison
 data['Target Label'] = data['Target Label'].astype(str)
-data['Arm Speed'] = data['Arm Speed'].astype(str)
-data['Attempt'] = data['Attempt'].astype(int)
+data['Decision'] = data['Decision'].astype(str)
 
-# Step 3: Separate analysis for each mode
-modes = data['Mode'].unique()
-for mode in modes:
-    mode_data = data[data['Mode'] == mode]
+# Normalize the 'Entropy' column
+if data['Entropy'].max() != data['Entropy'].min():
+    data['Entropy'] = (data['Entropy'] - data['Entropy'].min()) / (data['Entropy'].max() - data['Entropy'].min())
 
-    # Plot frequency of 'Arm Speed' for each mode
-    plt.figure(figsize=(12, 6))
-    sns.countplot(x='Arm Speed', data=mode_data, order=sorted(mode_data['Arm Speed'].unique()))
-    plt.title(f'Frequency of Arm Speeds for Mode: {mode}')
-    plt.xlabel('Arm Speed')
-    plt.ylabel('Frequency')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(f'frequency_arm_speed_mode_{mode}.png')
-    plt.close()
+# Step 4: Add a 'Correct' column to indicate if the decision was correct
+# 'Correct' is 1 if 'Target Label' is equal to 'Decision', otherwise 0
+data['Correct'] = (data['Target Label'] == data['Decision']).astype(int)
 
-    # Plot entropy over attempts for each mode
-    plt.figure(figsize=(12, 6))
-    sns.lineplot(x='Attempt', y='Entropy', data=mode_data, estimator='mean', errorbar='sd')
-    plt.title(f'Entropy Across Attempts (1-5) for Mode: {mode}')
-    plt.xlabel('Attempt')
-    plt.ylabel('Entropy')
-    plt.xticks([1, 2, 3, 4, 5])
-    plt.tight_layout()
-    plt.savefig(f'entropy_attempts_mode_{mode}.png')
-    plt.close()
+# Step 5: Create a separate DataFrame for accuracy over time step for each mode and attempt
+accuracy_data = data.groupby(['Mode', 'Time Step', 'Attempt'], as_index=False).agg({'Correct': 'mean'}).rename(columns={'Correct': 'Accuracy'})
 
-    # Plot average accuracy over time steps for each mode
-    plt.figure(figsize=(12, 6))
-    plt.plot(range(time_steps), average_accuracy_over_time, label=f'Mode: {mode}', marker='o')
-    plt.title(f'Average Accuracy Over Time Steps for Mode: {mode}')
-    plt.xlabel('Time Step')
-    plt.ylabel('Accuracy')
-    plt.tight_layout()
-    plt.savefig(f'average_accuracy_over_time_mode_{mode}.png')
-    plt.close()
+# Step 6: Drop non-numeric columns that are not needed for aggregation
+non_numeric_columns = ['Filename', 'Test Number', 'Target Label', 'Decision']
+data = data.drop(columns=[col for col in non_numeric_columns if col in data.columns])
 
-    # Plot average metrics over time steps for each mode
-    metrics_to_plot = ['Entropy', 'Confidence', 'Total Spikes']
-    for metric in metrics_to_plot:
-        plt.figure(figsize=(12, 6))
-        avg_metric_over_time = mode_data.groupby('Time Step')[metric].mean()
-        plt.plot(avg_metric_over_time.index, avg_metric_over_time.values, label=f'Mode: {mode}', marker='o')
-        plt.title(f'Average {metric} Over Time Steps for Mode: {mode}')
+# Step 7: Group the data by 'Mode', 'Time Step', and 'Attempt' for averaging across all target labels and arm speeds
+# Use only numeric columns for averaging
+averaged_data = data.groupby(['Mode', 'Time Step', 'Attempt'], as_index=False).mean()
+
+# Print out the averaged data used for plotting
+print("Averaged Data:")
+print(averaged_data)
+
+# Step 8: Plot Averaged Confidence and Entropy Over Time Step for Comparison
+if not averaged_data.empty:
+    modes = averaged_data['Mode'].unique()
+    for mode in modes:
+        mode_data = averaged_data[averaged_data['Mode'] == mode]
+        
+        # Plot Averaged Confidence for Attempts 1 and 2 on the same graph
+        plt.figure(figsize=(12, 8))
+        attempt_1_data = mode_data[mode_data['Attempt'] == 1]
+        attempt_2_data = mode_data[mode_data['Attempt'] == 2]
+        
+        # Plot Attempt 1 and Attempt 2 Confidence
+        if not attempt_1_data.empty:
+            plt.plot(attempt_1_data['Time Step'], attempt_1_data['Confidence'], label='Attempt 1', linestyle='--')
+        if not attempt_2_data.empty:
+            plt.plot(attempt_2_data['Time Step'], attempt_2_data['Confidence'], label='Attempt 2', linestyle='-')
+        
+        plt.title(f'Averaged Confidence vs. Time Step for Mode: {mode}')
         plt.xlabel('Time Step')
-        plt.ylabel(metric)
-        plt.tight_layout()
-        plt.savefig(f'average_{metric.lower().replace(" ", "_")}_over_time_mode_{mode}.png')
-        plt.close()
+        plt.ylabel('Averaged Confidence')
+        plt.legend()
+        #plt.show()
+        
+        # Plot Averaged Entropy for Attempts 1 and 2 on the same graph
+        plt.figure(figsize=(12, 8))
+        if not attempt_1_data.empty:
+            plt.plot(attempt_1_data['Time Step'], attempt_1_data['Entropy'], label='Attempt 1', linestyle='--')
+        if not attempt_2_data.empty:
+            plt.plot(attempt_2_data['Time Step'], attempt_2_data['Entropy'], label='Attempt 2', linestyle='-')
+        
+        plt.title(f'Averaged Entropy vs. Time Step for Mode: {mode}')
+        plt.xlabel('Time Step')
+        plt.ylabel('Averaged Entropy')
+        plt.legend()
+        #plt.show()
 
-# Step 4: Normalise entropy using global min and max for comparison between modes
-entropy_min = data['Entropy'].min()
-entropy_max = data['Entropy'].max()
-data['Normalized Entropy'] = (data['Entropy'] - entropy_min) / (entropy_max - entropy_min)
+# Step 9: Plot Averaged Entropy Across All Modes for Easy Comparison (Attempt 2 Only)
+if not averaged_data.empty:
+    plt.figure(figsize=(14, 10))
+    for mode in modes:
+        mode_data = averaged_data[averaged_data['Mode'] == mode]
+        attempt_2_data = mode_data[mode_data['Attempt'] == 2]
+        
+        # Plot Attempt 2 Entropy for each mode
+        if not attempt_2_data.empty:
+            plt.plot(attempt_2_data['Time Step'], attempt_2_data['Entropy'], label=f'Mode: {mode} - Attempt 2', linestyle='-')
 
-# Step 5: Comparison between modes for metrics
-# Plot entropy for each target label, for each mode
-for mode in modes:
-    mode_data = data[data['Mode'] == mode]
-    target_labels = mode_data['Target Label'].unique()
-    for label in target_labels:
-        label_data = mode_data[mode_data['Target Label'] == label]
-        plt.figure(figsize=(12, 6))
-        sns.lineplot(x='Attempt', y='Entropy', data=label_data, estimator='mean', errorbar='sd')
-        plt.title(f'Entropy Across Attempts for Mode: {mode}, Target Label: {label}')
-        plt.xlabel('Attempt')
-        plt.ylabel('Entropy')
-        plt.xticks([1, 2, 3, 4, 5])
-        plt.tight_layout()
-        plt.savefig(f'entropy_attempts_mode_{mode}_target_label_{label}.png')
-        plt.close()
+    plt.title('Averaged Entropy vs. Time Step Across All Modes (Attempt 2 Only)')
+    plt.xlabel('Time Step')
+    plt.ylabel('Averaged Entropy')
+    plt.legend()
+    #plt.show()
 
-metrics = ['Normalized Entropy', 'Confidence', 'Total Spikes']
-for metric in metrics:
-    plt.figure(figsize=(12, 6))
-    sns.lineplot(x='Attempt', y=metric, hue='Mode', data=data, estimator='mean', errorbar='sd')
-    plt.title(f'Comparison of {metric.replace("Normalized ", "")} Across Attempts by Mode')
-    plt.xlabel('Attempt')
-    plt.ylabel(metric)
-    plt.legend(title='Mode', bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.xticks([1, 2, 3, 4, 5])
-    plt.tight_layout()
-    plt.savefig(f'comparison_{metric.lower().replace(" ", "_")}_by_mode.png')
-    plt.close()
+# Step 10: Plot Averaged Confidence Across All Modes for Easy Comparison (Attempt 2 Only)
+if not averaged_data.empty:
+    plt.figure(figsize=(14, 10))
+    for mode in modes:
+        mode_data = averaged_data[averaged_data['Mode'] == mode]
+        attempt_2_data = mode_data[mode_data['Attempt'] == 2]
+        
+        # Plot Attempt 2 Confidence for each mode
+        if not attempt_2_data.empty:
+            plt.plot(attempt_2_data['Time Step'], attempt_2_data['Confidence'], label=f'Mode: {mode} - Attempt 2', linestyle='-')
 
-# Step 5: Save averaged metrics to CSV
-averaged_metrics = data.groupby(['Mode', 'Target Label', 'Attempt']).agg(
-    {'Entropy': 'mean', 'Confidence': 'mean', 'Total Spikes': 'mean'}
-).reset_index()
+    plt.title('Averaged Confidence vs. Time Step Across All Modes (Attempt 2 Only)')
+    plt.xlabel('Time Step')
+    plt.ylabel('Averaged Confidence')
+    plt.legend()
+    #plt.show()
 
-averaged_metrics.to_csv('averaged_metrics_by_mode.csv', index=False)
+# Step 11: Plot Average Difference in Entropy Between Attempts 1 and 2 for Each Mode as a Bar Graph
+if not averaged_data.empty:
+    diff_entropy_list = []
+    for mode in modes:
+        mode_data = averaged_data[averaged_data['Mode'] == mode]
+        attempt_1_data = mode_data[mode_data['Attempt'] == 1]
+        attempt_2_data = mode_data[mode_data['Attempt'] == 2]
+        
+        if not attempt_1_data.empty and not attempt_2_data.empty:
+            # Calculate the average difference between Attempt 2 and Attempt 1 for Entropy
+            avg_diff_entropy = (attempt_2_data['Entropy'].values - attempt_1_data['Entropy'].values).mean()
+            diff_entropy_list.append((mode, avg_diff_entropy))
+
+    # Convert the list to a DataFrame for easier plotting
+    diff_entropy_df = pd.DataFrame(diff_entropy_list, columns=['Mode', 'Average Entropy Difference'])
+
+    # Plot the bar graph
+    plt.figure(figsize=(10, 6))
+    plt.bar(diff_entropy_df['Mode'], diff_entropy_df['Average Entropy Difference'], color='skyblue')
+    plt.title('Average Difference in Entropy Between Attempts 1 and 2 for Each Mode')
+    plt.xlabel('Mode')
+    plt.ylabel('Average Entropy Difference (Attempt 2 - Attempt 1)')
+    plt.xticks(rotation=45)
+    #plt.show()
+
+# Step 12: Plot Average Accuracy Over Time Step for Each Mode and Attempt
+if not accuracy_data.empty:
+    plt.figure(figsize=(14, 10))
+    for mode in accuracy_data['Mode'].unique():
+        mode_data = accuracy_data[accuracy_data['Mode'] == mode]
+        for attempt in mode_data['Attempt'].unique():
+            attempt_data = mode_data[mode_data['Attempt'] == attempt]
+            plt.plot(attempt_data['Time Step'], attempt_data['Accuracy'], label=f'Mode: {mode} - Attempt: {attempt}', linestyle='-')
+
+    plt.title('Average Accuracy vs. Time Step for Different Modes and Attempts')
+    plt.xlabel('Time Step')
+    plt.ylabel('Average Accuracy')
+    plt.legend()
+    #plt.show()
+
+# Step 13: Find Tc and Th for Each Mode and Attempt, and Output as a LaTeX Table
+latex_table_data = []
+if not accuracy_data.empty:
+    for mode in accuracy_data['Mode'].unique():
+        mode_data = accuracy_data[accuracy_data['Mode'] == mode]
+        for attempt in mode_data['Attempt'].unique():
+            attempt_data = mode_data[mode_data['Attempt'] == attempt]
+            
+            # Find the time step where accuracy reaches its maximum value (Tc)
+            tc = attempt_data.loc[attempt_data['Accuracy'].idxmax(), 'Time Step']
+            max_accuracy = attempt_data['Accuracy'].max()
+            
+            # Find the time step where accuracy first exceeds 65% (Th)
+            th_data = attempt_data[attempt_data['Accuracy'] > 0.65]
+            if not th_data.empty:
+                th = th_data.iloc[0]['Time Step']
+            else:
+                th = 'Not reached'
+            
+            # Append data for LaTeX table
+            latex_table_data.append([mode, attempt, tc, th, max_accuracy])
+
+# Create LaTeX table from the collected data
+latex_df = pd.DataFrame(latex_table_data, columns=['Mode', 'Attempt', 'Tc', 'Th', 'Max Accuracy'])
+print("\nLaTeX Table:\n")
+print(latex_df.to_latex(index=False))

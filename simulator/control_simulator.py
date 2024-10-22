@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 import glob
@@ -14,6 +16,7 @@ import sys
 sys.path.append("..")
 from utils.utils import nums_from_string
 
+
 class ControlSimulator():
     def __init__(
         self,
@@ -24,16 +27,14 @@ class ControlSimulator():
         output_path,
         sim_label,        
         loihi=False,
-        timeout=5,
         speeds=[15, 25, 35, 45, 55],
-        sample_length = 200,
+        sample_length = 1000,
     ) -> None:
 
         # Init hyperparams
         self.mode = mode
         self.loihi = loihi
         self.sim_label = sim_label
-        self.timeout = timeout
         self.network_path = network_path
         self.dataset_path = dataset_path
         self.output_path = output_path
@@ -58,11 +59,11 @@ class ControlSimulator():
         )
 
         # Init values used in sim
+        self.data = None
         self.sim_output = None
-        self.all_test_data = np.empty((10, self.timeout*self.sample_length))
-        self.acc = None
         self.filenames = []
         self.current_attempt = 1
+        self.pred = None
 
     def find_starting_speed(self, lookup_path) -> tuple:
         """
@@ -82,6 +83,20 @@ class ControlSimulator():
         return np.random.choice(self.speeds), lookup_table
 
     def state_change(self) -> None:
+        """
+        Method to use the lookup table to find the new exploratory speed for the robot
+        based on the currently predicted texture
+        """
+        speed_idx = np.argmin(self.lookup_table[self.pred])
+        try:
+            self.attempt_speeds.append(self.speeds[speed_idx])
+        except Exception as e:
+            print(e)
+            print(speed_idx)
+            print(self.pred)
+            print(self.lookup_table[self.pred])
+            
+    def von_rossum_change(self) -> None:
         """
         Method to use the lookup table to find the new exploratory speed for the robot
         """
@@ -133,61 +148,65 @@ class ControlSimulator():
         # Maintain sim values for use in logger
         self.sim_output = out
 
-    def log_sim(self) -> None:
+    def log_sim(self, save=False) -> None:
         """
         Method to take the output from the simulation and log it into a csv
         """
-        # Add this sample output to the accumulator
-        self.all_test_data[:, (self.current_attempt-1)*self.sample_length:self.current_attempt*self.sample_length] = self.sim_output
-        self.acc = np.cumsum(self.all_test_data[:, :self.current_attempt*self.sample_length], axis=1)
+        # Analyse this sample
+        test_data = self.sim_output
         
-        if self.current_attempt == self.timeout:
-            self.acc = np.cumsum(self.all_test_data, axis=1)
-            total_spikes = np.sum(self.acc, axis=0)
-            decision = np.argmax(self.acc, axis=0)
-            highest_spikes = np.max(self.acc, axis=0)
-            confidence = highest_spikes / total_spikes
-            entropy = self.__calculate_entropy(total_spikes)
-            # entropy = self.__calculate_moving_window_entropy(self.acc)
-            
-            # Meta params for each attempt
-            # NOTE: These need reiterating at each timestep in output data
-            f = [n for name in self.filenames for n in np.repeat(name, self.sample_length)]
-            s = [sp for speed in self.attempt_speeds for sp in np.repeat(speed, self.sample_length)]
-            a = [at+1 for att in range(self.timeout) for at in np.repeat(att, self.sample_length)]
-            
-            # Create output dataframe
-            inp = {
-                "Mode": self.mode,
-                "Filename": f,
-                "Arm Speed": s,
-                "Target Label": np.repeat(self.sim_label, self.sample_length*self.timeout),
-                "Decision": decision,
-                "Confidence": confidence,
-                "Entropy": entropy,
-                "Total Spikes": total_spikes,
-                "Attempt": a,
-            }
-            save_data = pd.DataFrame(data=inp)
-            
-            # Save dataframe to csv at end of testing
+        self.acc = np.cumsum(test_data, axis=1)
+        total_spikes = np.sum(self.acc, axis=0)
+        decision = np.argmax(self.acc, axis=0)
+        self.pred = decision[-1]
+        highest_spikes = np.max(self.acc, axis=0)
+        confidence = highest_spikes / total_spikes
+        entropy = self.__calculate_entropy(total_spikes)
+        # entropy = self.__calculate_moving_window_entropy(acc)
+        
+        # Meta params for each attempt
+        # NOTE: These need reiterating at each timestep in output data
+        f = np.repeat(self.filenames[-1], self.sample_length)
+        s = np.repeat(self.attempt_speeds[-1], self.sample_length)
+        a = np.repeat(self.current_attempt, self.sample_length)
+        
+        # Create output dataframe
+        inp = {
+            "Mode": self.mode,
+            "Filename": f,
+            "Time Step": np.arange(self.sample_length),
+            "Arm Speed": s,
+            "Target Label": np.repeat(self.sim_label, self.sample_length),
+            "Decision": decision,
+            "Confidence": confidence,
+            "Entropy": entropy,
+            "Total Spikes": total_spikes,
+            "Max Spikes": highest_spikes,
+            "Attempt": a,
+        }
+        save_data = pd.DataFrame(data=inp)
+        if self.current_attempt == 1:
+            self.data = save_data
+        else:
+            self.data = pd.concat([self.data, save_data], ignore_index=True)
+
+        # Save dataframe to csv at end of testing
+        if save:
             print("Saving data...")
-            save_data.to_csv(
+            self.data.to_csv(
                 f"{self.output_path}/{self.mode}-{self.sim_label}-iteration-{self.test_num}.csv"
             )
-        else:
-            self.current_attempt += 1
 
     def __calculate_entropy(self, total_spikes) -> float:
         """
         Private method to calculate entropy at each time step
         """
-        entropy_values = np.zeros(self.sample_length * self.timeout, dtype=float)
+        entropy_values = np.zeros(self.sample_length, dtype=float)
 
         # Small constant to avoid division by zero
         epsilon = 1e-12
 
-        for ts in range(self.sample_length * self.timeout):
+        for ts in range(self.sample_length):
             # Spike rates up to current time step for each neuron
             spike_rates = self.acc[:, ts]
 
@@ -255,19 +274,24 @@ class ControlSimulator():
         return entropy_over_time
 
     def run_simulation(self):
-        for _ in range(self.timeout):
-            self.test_with_netx()
-            self.log_sim()
-            
-            # If random mode select a random speed to switch to
-            if self.mode == "r":
-                self.rand_change()
-            # If test mode implement the correct switch
-            elif self.mode == "t":
-                self.state_change()
-            # Else keep using the starting speed and append to list again
-            elif self.mode == "b":
-                self.attempt_speeds.append(self.attempt_speeds[-1])
+        self.test_with_netx()
+        self.log_sim(save=False)
+        
+        # If random mode select a random speed to switch to
+        if self.mode == "r":
+            self.rand_change()
+        # If test mode implement the correct switch
+        elif self.mode == "t":
+            self.state_change()
+        # Else keep using the starting speed and append to list again
+        elif self.mode == "b":
+            self.attempt_speeds.append(self.attempt_speeds[-1])
+        elif self.mode == "v":
+            self.von_rossum_change()
+
+        self.current_attempt += 1
+        self.test_with_netx()
+        self.log_sim(save=True)
 
 def main():
     #################
@@ -275,14 +299,18 @@ def main():
     #################
     mode = sys.stdin.readline().strip()
     target_label = int(sys.stdin.readline().strip())
-
+    
+    if mode != "v":
+        lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/labels_speeds_entropy.npy"
+    else:
+        lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy"
+    
     sim = ControlSimulator(
         mode = mode,
         loihi = False,
         sim_label = target_label,
-        timeout = 3,
-        lookup_path =  "/media/george/T7 Shield/Neuromorphic Data/George/tests/dataset_analysis/tex_tex_speed_similarity_data.npy",
-        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/spike_max_arm_test_1729171142/network.net",
+        lookup_path=lookup_path,
+        network_path = "/media/george/T7 Shield/Neuromorphic Data/George/arm_networks/spike_max_arm_test_1729473122/network.net",
         dataset_path = "/media/george/T7 Shield/Neuromorphic Data/George/simulator_testing/",
         output_path = "/media/george/T7 Shield/Neuromorphic Data/George/tests/simulator_tests/",
     )
